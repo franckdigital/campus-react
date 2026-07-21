@@ -26,8 +26,7 @@ export default function StudentDossier({ student, onClose }) {
         const response = await studentsService.getDossier(student.id);
         console.log('Dossier data from backend:', response);
         console.log('Financial fields:', {
-          registration_fee: response?.registration_fee,
-          registration_fee_paid: response?.registration_fee_paid,
+          is_enrolled: response?.is_enrolled,
           tuition_fee: response?.tuition_fee,
           total_paid: response?.total_paid,
           remaining_balance: response?.remaining_balance
@@ -768,8 +767,7 @@ function PaiementsTab({ studentId, studentData }) {
   const totalTuition = parseFloat(studentData?.tuition_fee || 0);
   const totalPaid = parseFloat(studentData?.total_paid || 0);
   const totalDue = parseFloat(studentData?.remaining_balance || 0);
-  const registrationFee = parseFloat(studentData?.registration_fee || 0);
-  const registrationPaid = studentData?.registration_fee_paid || false;
+  const isEnrolled = studentData?.is_enrolled || false;
 
   return (
     <div className="space-y-6">
@@ -833,30 +831,30 @@ function PaiementsTab({ studentId, studentData }) {
       </div>
 
       {/* Statut d'inscription */}
-      {registrationFee > 0 && (
+      {totalTuition > 0 && (
         <div className={`p-4 rounded-xl border ${
-          registrationPaid 
-            ? 'bg-green-50 border-green-200' 
+          isEnrolled
+            ? 'bg-green-50 border-green-200'
             : 'bg-red-50 border-red-200'
         }`}>
           <div className="flex items-center gap-3">
-            {registrationPaid ? (
+            {isEnrolled ? (
               <CheckCircle className="h-5 w-5 text-green-600" />
             ) : (
               <AlertCircle className="h-5 w-5 text-red-600" />
             )}
             <div>
               <p className={`font-medium ${
-                registrationPaid ? 'text-green-900' : 'text-red-900'
+                isEnrolled ? 'text-green-900' : 'text-red-900'
               }`}>
-                {registrationPaid 
-                  ? '✓ Frais d\'inscription payés - Étudiant inscrit' 
-                  : '⚠ L\'étudiant doit payer les frais d\'inscription pour valider son inscription'}
+                {isEnrolled
+                  ? '✓ Étudiant inscrit'
+                  : '⚠ L\'étudiant doit régler le seuil minimum de scolarité pour valider son inscription'}
               </p>
               <p className={`text-sm ${
-                registrationPaid ? 'text-green-700' : 'text-red-700'
+                isEnrolled ? 'text-green-700' : 'text-red-700'
               }`}>
-                Frais d'inscription: {registrationFee.toLocaleString('fr-FR')} FCFA
+                Scolarité: {totalPaid.toLocaleString('fr-FR')} / {totalTuition.toLocaleString('fr-FR')} FCFA
               </p>
             </div>
           </div>

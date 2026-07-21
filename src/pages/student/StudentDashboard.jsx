@@ -10,7 +10,6 @@ import { financeService } from '../../services/finance';
 import { useApi } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
-import { computeFeeBreakdown } from '../../utils/feeBreakdown';
 
 const STATUS_LABELS = {
   ACTIVE: { label: 'Actif', color: '#059669', bg: '#f0fdf4' },
@@ -76,9 +75,9 @@ export default function StudentDashboard() {
     [studentId], !!studentId
   );
 
-  // Fetch the student's invoices to split INSCRIPTION vs SCOLARITÉ with the
-  // exact same logic as the admin dossier header (computeFeeBreakdown) — so
-  // this banner never disagrees with what an admin sees for this student.
+  // Fetch the student's invoices for a plain scolarité total/paid — there's
+  // only one fee concept now (inscription merged into scolarité), so no more
+  // regex-based splitting is needed here.
   const { data: invoicesData } = useApi(
     () => studentId ? financeService.getInvoices({ student: studentId }) : Promise.resolve([]),
     [studentId], !!studentId
@@ -95,23 +94,20 @@ export default function StudentDashboard() {
     || user?.email
     || 'Étudiant';
 
-  const tuition = parseFloat(summary?.tuition_fee_only ?? summary?.tuition_fee ?? 0);
+  const tuition = parseFloat(summary?.configured_tuition_fee ?? summary?.tuition_fee ?? 0);
   const statusInfo = STATUS_LABELS[student?.status] || STATUS_LABELS.ACTIVE;
 
-  // INSCRIPTION vs SCOLARITÉ breakdown — same aggregation the admin dossier
-  // header uses, so both sides always show identical figures.
-  const feeBreakdown = computeFeeBreakdown(invoicesList, {
-    fallbackReg: parseFloat(summary?.registration_fee ?? student?.registration_fee ?? 0),
-    fallbackTuition: tuition,
-    registrationFeePaidFlag: summary?.registration_fee_paid ?? student?.registration_fee_paid,
-  });
-  const isEnrolled = feeBreakdown.isEnrolled;
-  const regTotal = feeBreakdown.regTotal;
-  const regPaid = feeBreakdown.regPaid;
-  const regBalance = feeBreakdown.regBalance;
-  const tuitionTotal = feeBreakdown.tuitionTotal;
-  const tuitionPaid = feeBreakdown.tuitionPaid;
-  const tuitionBalance = feeBreakdown.tuitionBalance;
+  // is_enrolled is the backend's single computed flag (cumulative payments
+  // vs the configurable threshold) — no more client-side derivation.
+  const isEnrolled = summary?.is_enrolled ?? student?.is_enrolled ?? false;
+  const minEnrollmentPayment = parseFloat(summary?.min_enrollment_payment ?? 0);
+
+  const tuitionPaidFromInv  = invoicesList.reduce((s, inv) => s + parseFloat(inv.amount_paid || 0), 0);
+  const tuitionTotalFromInv = invoicesList.reduce((s, inv) => s + parseFloat(inv.total || 0), 0);
+  const tuitionTotal   = tuitionTotalFromInv > 0 ? tuitionTotalFromInv : tuition;
+  const tuitionPaid    = tuitionPaidFromInv;
+  const tuitionBalance = Math.max(0, tuitionTotal - tuitionPaid);
+  const enrollRemaining = Math.max(0, minEnrollmentPayment - tuitionPaid);
   const tuitionPct = tuitionTotal > 0 ? Math.min(100, Math.round((tuitionPaid / tuitionTotal) * 100)) : 0;
 
   const currentClass = activeEnrollment?.class_name || '—';
@@ -185,52 +181,32 @@ export default function StudentDashboard() {
           ))}
         </div>
 
-        {/* Financial breakdown — same INSCRIPTION / SCOLARITÉ figures the
-            admin dossier header shows for this student, so the two never
-            disagree. */}
-        {(regTotal > 0 || tuition > 0) && (
-          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {regTotal > 0 && (
-              <div>
-                <p className="text-[9px] font-bold uppercase tracking-widest mb-1.5" style={{ color: 'rgba(253,186,116,0.9)' }}>Inscription</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { label: 'Total', value: regTotal, color: 'rgba(255,255,255,0.85)' },
-                    { label: 'Payé',  value: regPaid,   color: '#86efac' },
-                    { label: 'Reste', value: regBalance, color: regBalance > 0 ? '#fca5a5' : '#86efac' },
-                  ].map((item, i) => (
-                    <div key={i} className="rounded-xl px-3 py-2 text-center"
-                         style={{ background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.2)' }}>
-                      <p className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: 'rgba(253,186,116,0.85)' }}>{item.label}</p>
-                      <p className="text-sm font-extrabold" style={{ color: item.color, letterSpacing: '-0.01em' }}>
-                        {item.value.toLocaleString('fr-FR')}
-                      </p>
-                      <p className="text-[9px]" style={{ color: 'rgba(255,255,255,0.4)' }}>FCFA</p>
-                    </div>
-                  ))}
+        {/* Financial breakdown — single scolarité concept now (inscription
+            merged into it), same figures the admin dossier header shows for
+            this student, so the two never disagree. */}
+        {tuition > 0 && (
+          <div className="mt-3">
+            <p className="text-[9px] font-bold uppercase tracking-widest mb-1.5" style={{ color: 'rgba(147,197,253,0.9)' }}>Scolarité</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: 'Total', value: tuitionTotal, color: 'rgba(255,255,255,0.85)' },
+                { label: 'Payé',  value: tuitionPaid,   color: '#86efac' },
+                { label: 'Reste', value: tuitionBalance, color: tuitionBalance > 0 ? '#fca5a5' : '#86efac' },
+              ].map((item, i) => (
+                <div key={i} className="rounded-xl px-3 py-2 text-center"
+                     style={{ background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.25)' }}>
+                  <p className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: 'rgba(147,197,253,0.85)' }}>{item.label}</p>
+                  <p className="text-sm font-extrabold" style={{ color: item.color, letterSpacing: '-0.01em' }}>
+                    {item.value.toLocaleString('fr-FR')}
+                  </p>
+                  <p className="text-[9px]" style={{ color: 'rgba(255,255,255,0.4)' }}>FCFA</p>
                 </div>
-              </div>
-            )}
-            {tuition > 0 && (
-              <div>
-                <p className="text-[9px] font-bold uppercase tracking-widest mb-1.5" style={{ color: 'rgba(147,197,253,0.9)' }}>Scolarité</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { label: 'Total', value: tuitionTotal, color: 'rgba(255,255,255,0.85)' },
-                    { label: 'Payé',  value: tuitionPaid,   color: '#86efac' },
-                    { label: 'Reste', value: tuitionBalance, color: tuitionBalance > 0 ? '#fca5a5' : '#86efac' },
-                  ].map((item, i) => (
-                    <div key={i} className="rounded-xl px-3 py-2 text-center"
-                         style={{ background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.25)' }}>
-                      <p className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: 'rgba(147,197,253,0.85)' }}>{item.label}</p>
-                      <p className="text-sm font-extrabold" style={{ color: item.color, letterSpacing: '-0.01em' }}>
-                        {item.value.toLocaleString('fr-FR')}
-                      </p>
-                      <p className="text-[9px]" style={{ color: 'rgba(255,255,255,0.4)' }}>FCFA</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              ))}
+            </div>
+            {!isEnrolled && minEnrollmentPayment > 0 && (
+              <p className="text-[10px] mt-1.5" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                Seuil d'inscription : {minEnrollmentPayment.toLocaleString('fr-FR')} FCFA — reste {enrollRemaining.toLocaleString('fr-FR')} FCFA
+              </p>
             )}
           </div>
         )}
@@ -304,85 +280,63 @@ export default function StudentDashboard() {
             </div>
           </div>
 
-          {/* Financial summary — Inscription and Scolarité shown as two
-              distinct blocks (each with its own Total/Payé/Reste), matching
-              the INSCRIPTION/SCOLARITÉ breakdown in the banner above instead
-              of mixing the two into one ambiguous total. */}
-          {(regTotal > 0 || tuition > 0) && (
+          {/* Financial summary — single scolarité section (inscription
+              merged into it) plus the enrollment threshold status. */}
+          {tuition > 0 && (
             <div className="card p-5 space-y-4">
               <h2 className="text-sm font-extrabold" style={{ color: '#0f172a' }}>Situation financière</h2>
 
-              {regTotal > 0 && (
-                <div>
-                  <div className="flex items-center gap-3 p-3 rounded-xl mb-3"
-                       style={isEnrolled
-                         ? { background: '#f0fdf4', border: '1.5px solid #bbf7d0' }
-                         : { background: '#fffbeb', border: '1.5px solid #fde68a' }}>
-                    <div className="h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                         style={{ background: isEnrolled ? '#059669' : '#d97706' }}>
-                      {isEnrolled
-                        ? <CheckCircle className="h-4 w-4 text-white" />
-                        : <AlertCircle className="h-4 w-4 text-white" />}
-                    </div>
-                    <p className="text-xs font-bold" style={{ color: isEnrolled ? '#065f46' : '#92400e' }}>
-                      {isEnrolled ? 'Inscription validée' : 'Inscription non validée'}
-                    </p>
+              <div>
+                <div className="flex items-center gap-3 p-3 rounded-xl mb-3"
+                     style={isEnrolled
+                       ? { background: '#f0fdf4', border: '1.5px solid #bbf7d0' }
+                       : { background: '#fffbeb', border: '1.5px solid #fde68a' }}>
+                  <div className="h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                       style={{ background: isEnrolled ? '#059669' : '#d97706' }}>
+                    {isEnrolled
+                      ? <CheckCircle className="h-4 w-4 text-white" />
+                      : <AlertCircle className="h-4 w-4 text-white" />}
                   </div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#d97706' }}>Inscription</p>
-                  <div className="space-y-1">
-                    {[
-                      { label: 'Total', value: regTotal, color: '#1e293b' },
-                      { label: 'Payé',  value: regPaid,   color: '#059669' },
-                      { label: regBalance > 0 ? 'Reste' : 'Solde', value: regBalance, color: regBalance > 0 ? '#ef4444' : '#059669' },
-                    ].map((item, i) => (
-                      <div key={i} className="flex items-center justify-between py-0.5">
-                        <span className="text-xs font-semibold" style={{ color: '#64748b' }}>{item.label}</span>
-                        <span className="text-xs font-extrabold" style={{ color: item.color }}>
-                          {item.value > 0 || item.label !== 'Solde' ? `${item.value.toLocaleString('fr-FR')} F` : 'Soldé ✓'}
-                        </span>
-                      </div>
-                    ))}
+                  <p className="text-xs font-bold" style={{ color: isEnrolled ? '#065f46' : '#92400e' }}>
+                    {isEnrolled
+                      ? 'Inscription validée'
+                      : `Inscription non validée — reste ${enrollRemaining.toLocaleString('fr-FR')} F`}
+                  </p>
+                </div>
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#2563eb' }}>Scolarité</p>
+                <div className="space-y-1">
+                  {[
+                    { label: 'Total', value: tuitionTotal, color: '#1e293b' },
+                    { label: 'Payé',  value: tuitionPaid,   color: '#059669' },
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-center justify-between py-0.5">
+                      <span className="text-xs font-semibold" style={{ color: '#64748b' }}>{item.label}</span>
+                      <span className="text-xs font-extrabold" style={{ color: item.color }}>{item.value.toLocaleString('fr-FR')} F</span>
+                    </div>
+                  ))}
+                  <div className="h-2 rounded-full overflow-hidden my-1" style={{ background: '#f1f5f9' }}>
+                    <div className="h-full rounded-full"
+                         style={{
+                           width: `${tuitionPct}%`,
+                           background: tuitionPct === 100 ? 'linear-gradient(90deg,#059669,#34d399)' : 'linear-gradient(90deg,#d97706,#fbbf24)'
+                         }} />
+                  </div>
+                  <div className="flex items-center justify-between py-0.5">
+                    <span className="text-xs font-semibold" style={{ color: '#64748b' }}>
+                      {tuitionBalance > 0 ? 'Reste' : 'Solde'}
+                    </span>
+                    <span className="text-xs font-extrabold"
+                          style={{ color: tuitionBalance > 0 ? '#ef4444' : '#059669' }}>
+                      {tuitionBalance > 0 ? `${tuitionBalance.toLocaleString('fr-FR')} F` : 'Soldé ✓'}
+                    </span>
                   </div>
                 </div>
-              )}
-
-              {tuition > 0 && (
-                <div style={regTotal > 0 ? { paddingTop: '1rem', borderTop: '1px solid #f1f5f9' } : undefined}>
-                  <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#2563eb' }}>Scolarité</p>
-                  <div className="space-y-1">
-                    {[
-                      { label: 'Total', value: tuitionTotal, color: '#1e293b' },
-                      { label: 'Payé',  value: tuitionPaid,   color: '#059669' },
-                    ].map((item, i) => (
-                      <div key={i} className="flex items-center justify-between py-0.5">
-                        <span className="text-xs font-semibold" style={{ color: '#64748b' }}>{item.label}</span>
-                        <span className="text-xs font-extrabold" style={{ color: item.color }}>{item.value.toLocaleString('fr-FR')} F</span>
-                      </div>
-                    ))}
-                    <div className="h-2 rounded-full overflow-hidden my-1" style={{ background: '#f1f5f9' }}>
-                      <div className="h-full rounded-full"
-                           style={{
-                             width: `${tuitionPct}%`,
-                             background: tuitionPct === 100 ? 'linear-gradient(90deg,#059669,#34d399)' : 'linear-gradient(90deg,#d97706,#fbbf24)'
-                           }} />
-                    </div>
-                    <div className="flex items-center justify-between py-0.5">
-                      <span className="text-xs font-semibold" style={{ color: '#64748b' }}>
-                        {tuitionBalance > 0 ? 'Reste' : 'Solde'}
-                      </span>
-                      <span className="text-xs font-extrabold"
-                            style={{ color: tuitionBalance > 0 ? '#ef4444' : '#059669' }}>
-                        {tuitionBalance > 0 ? `${tuitionBalance.toLocaleString('fr-FR')} F` : 'Soldé ✓'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
           )}
 
-          {/* Inscription placeholder when no financial data */}
-          {regTotal === 0 && tuition === 0 && (
+          {/* Placeholder when no financial data */}
+          {tuition === 0 && (
             <div className="card p-5">
               <h2 className="text-sm font-extrabold mb-3" style={{ color: '#0f172a' }}>Situation financière</h2>
               <div className="flex flex-col items-center justify-center py-8 gap-3"

@@ -67,10 +67,12 @@ export default function StudentFinances() {
   const payments = Array.isArray(paymentsData) ? paymentsData : (paymentsData?.results || []);
 
   const paid = parseFloat(summary?.total_paid || 0);
-  const tuition = parseFloat(summary?.tuition_fee_only ?? summary?.tuition_fee ?? 0);
+  const tuition = parseFloat(summary?.configured_tuition_fee ?? summary?.tuition_fee ?? 0);
   const balance = parseFloat(summary?.remaining_balance || 0);
   const pct = tuition > 0 ? Math.min(100, Math.round((paid / tuition) * 100)) : 0;
-  const isEnrolled = summary?.registration_fee_paid ?? profile?.registration_fee_paid;
+  const isEnrolled = summary?.is_enrolled ?? profile?.is_enrolled;
+  const minEnrollmentPayment = parseFloat(summary?.min_enrollment_payment ?? 0);
+  const enrollRemaining = Math.max(0, minEnrollmentPayment - paid);
 
   if (loadProfile || loadSummary) return <Spinner />;
 
@@ -123,10 +125,12 @@ export default function StudentFinances() {
             </div>
             <div>
               <p className="text-sm font-extrabold" style={{ color: isEnrolled ? '#065f46' : '#92400e' }}>
-                {isEnrolled ? 'Frais d\'inscription réglés' : 'Frais d\'inscription en attente'}
+                {isEnrolled ? 'Inscription validée' : 'Inscription en attente'}
               </p>
               <p className="text-xs" style={{ color: isEnrolled ? '#047857' : '#b45309' }}>
-                Frais : {parseFloat(profile?.registration_fee || 0).toLocaleString('fr-FR')} F CFA
+                {isEnrolled
+                  ? `Scolarité : ${paid.toLocaleString('fr-FR')} F CFA payés`
+                  : `Seuil d'inscription : ${minEnrollmentPayment.toLocaleString('fr-FR')} F CFA — reste ${enrollRemaining.toLocaleString('fr-FR')} F CFA`}
               </p>
             </div>
           </div>

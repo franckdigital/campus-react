@@ -33,7 +33,7 @@ function StudentCard({ student }) {
   const paid = parseFloat(student.total_paid || 0);
   const tuition = parseFloat(student.tuition_fee || 0);
   const pct = tuition > 0 ? Math.min(100, Math.round((paid / tuition) * 100)) : 0;
-  const isEnrolled = student.registration_fee_paid;
+  const isEnrolled = student.is_enrolled;
 
   return (
     <div
@@ -132,7 +132,7 @@ export default function ParentDashboard() {
   const fullName = user?.full_name || user?.email || 'Parent';
 
   const totalBalance = studentsList.reduce((s, st) => s + parseFloat(st.remaining_balance || 0), 0);
-  const enrolledCount = studentsList.filter(s => s.registration_fee_paid).length;
+  const enrolledCount = studentsList.filter(s => s.is_enrolled).length;
 
   if (loading) return <Spinner />;
 

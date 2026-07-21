@@ -38,7 +38,7 @@ export default function Settings() {
   // Persisted via apps.core's generic SystemConfig key/value store (see
   // services/configs.js) — the rest of the Finance tab (devise, délai,
   // frais de retard) is still local-only/unwired, unchanged from before.
-  const [financeData, setFinanceData] = useState({ default_payment_method: 'Espèces', mobile_money_number: '' });
+  const [financeData, setFinanceData] = useState({ default_payment_method: 'Espèces', mobile_money_number: '', min_enrollment_payment: '' });
 
   const { data: academicYears, execute: fetchAcademicYears } = useApi(() => academicService.getAcademicYears(), [], true);
   const { data: semesters, execute: fetchSemesters } = useApi(() => academicService.getSemesters(), [], true);
@@ -48,10 +48,12 @@ export default function Settings() {
     const rows = financeConfigs?.results || financeConfigs || [];
     const method = rows.find(r => r.key === 'default_payment_method');
     const number  = rows.find(r => r.key === 'mobile_money_number');
-    if (method || number) {
+    const minEnrollment = rows.find(r => r.key === 'MIN_ENROLLMENT_PAYMENT');
+    if (method || number || minEnrollment) {
       setFinanceData(prev => ({
         default_payment_method: method?.value || prev.default_payment_method,
         mobile_money_number: number?.value || prev.mobile_money_number,
+        min_enrollment_payment: minEnrollment?.value ?? prev.min_enrollment_payment,
       }));
     }
   }, [financeConfigs]);
@@ -116,6 +118,9 @@ export default function Settings() {
         await configService.setValue('default_payment_method', financeData.default_payment_method);
         if (financeData.default_payment_method === 'Mobile Money') {
           await configService.setValue('mobile_money_number', financeData.mobile_money_number);
+        }
+        if (financeData.min_enrollment_payment !== '' && financeData.min_enrollment_payment != null) {
+          await configService.setValue('MIN_ENROLLMENT_PAYMENT', String(financeData.min_enrollment_payment));
         }
       } else {
         await new Promise(r => setTimeout(r, 600));
@@ -547,6 +552,18 @@ export default function Settings() {
                     </p>
                   </div>
                 )}
+                <div>
+                  <label className="block text-xs font-bold mb-1.5" style={{ color: '#475569' }}>
+                    Seuil minimum pour valider l'inscription (FCFA)
+                  </label>
+                  <input type="number" min="0" step="1" placeholder="Ex : 50000" className="input-field"
+                         value={financeData.min_enrollment_payment}
+                         onChange={e => setFinanceData(p => ({ ...p, min_enrollment_payment: e.target.value }))}
+                         onWheel={e => e.target.blur()} />
+                  <p className="text-[11px] mt-1" style={{ color: '#94a3b8' }}>
+                    Montant cumulé à payer sur la scolarité pour qu'un étudiant soit considéré "inscrit". Par défaut : 50 000 FCFA.
+                  </p>
+                </div>
               </div>
               <SaveBtn section="finance" />
             </div>

@@ -577,7 +577,7 @@ export default function Finance() {
                 {
                   tab: 'Factures', color: '#2563eb', bg: '#dbeafe',
                   items: [
-                    'Créer manuellement ou lier à un type de frais (scolarité, inscription…)',
+                    'Créer manuellement ou lier à un type de frais (scolarité, examens…)',
                     'Statuts : BROUILLON → ENVOYÉE → PARTIEL → PAYÉE / EN RETARD',
                     'Télécharger le PDF pour l\'envoyer à l\'étudiant',
                     'La balance = total facturé − total payé par l\'étudiant',
@@ -595,7 +595,7 @@ export default function Finance() {
                 {
                   tab: 'Types de frais', color: COLOR, bg: '#fef3c7',
                   items: [
-                    'Définir les catégories : scolarité annuelle, inscription, examens…',
+                    'Définir les catégories : scolarité annuelle, examens, frais de dossier…',
                     'Le montant par défaut pré-remplit la facture à la création',
                     'Frais récurrents : s\'appliquent à chaque année académique',
                     'À configurer avant de créer les premières factures',
@@ -878,7 +878,7 @@ export default function Finance() {
           {/* Workflow explanation */}
           <div className="rounded-2xl p-4" style={{ background: 'linear-gradient(135deg,#fffbeb,#fef3c7)', border: '1.5px solid #fde68a' }}>
             <p className="text-xs font-bold mb-2" style={{ color: '#d97706' }}>Comment ça marche ?</p>
-            <p className="text-xs" style={{ color: '#92400e' }}>Les types de frais définissent les lignes qui apparaissent sur vos factures (ex: Inscription, Scolarité, Frais de dossier). Chaque facture est composée d'une ou plusieurs lignes basées sur ces types.</p>
+            <p className="text-xs" style={{ color: '#92400e' }}>Les types de frais définissent les lignes qui apparaissent sur vos factures (ex: Scolarité, Examens, Frais de dossier). Chaque facture est composée d'une ou plusieurs lignes basées sur ces types.</p>
           </div>
 
           {feeTypesList.length === 0 ? (

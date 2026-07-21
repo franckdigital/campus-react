@@ -39,6 +39,7 @@ export default function Students() {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showEnrollmentModal, setShowEnrollmentModal] = useState(false);
   const [actionModal, setActionModal] = useState(null);
+  const [togglingOverrideId, setTogglingOverrideId] = useState(null);
 
   const [confirmModal, setConfirmModal] = useState(null); // { message, onConfirm }
 
@@ -344,6 +345,30 @@ export default function Students() {
     });
   };
 
+  // Admin-only exemption: lets a student access e-learning content/exams
+  // even while behind on their échéancier de scolarité, so the school can
+  // let them compose now and settle the remaining tuition later. Mirrors
+  // the same échéance_override toggle already available inside the student
+  // dossier page, exposed here directly per-row for quick access.
+  const handleToggleEcheanceOverride = async (student) => {
+    const next = !student.echeance_override;
+    setTogglingOverrideId(student.id);
+    try {
+      await studentsService.update(student.id, { echeance_override: next });
+      notify(
+        next
+          ? "Accès e-learning autorisé malgré le retard de paiement."
+          : "Autorisation spéciale révoquée — l'étudiant redevient soumis à l'échéancier.",
+        'success'
+      );
+      fetchStudents();
+    } catch (err) {
+      notify(err?.message || "Erreur lors de la mise à jour de l'autorisation", 'error');
+    } finally {
+      setTogglingOverrideId(null);
+    }
+  };
+
   const handleCreateProgram = async (name) => {
     const siteId = formData.site_id || (selectedSite !== 'all' ? selectedSite : null);
     if (!siteId) { notify('Sélectionnez un site', 'error'); throw new Error(); }
@@ -375,8 +400,8 @@ export default function Students() {
   const studentsList = studentsListAll.filter(s => {
     if (filterScolarite === 'ok' && !(s.tuition_up_to_date || s.echeance_override)) return false;
     if (filterScolarite === 'late' && (s.tuition_up_to_date || s.echeance_override)) return false;
-    if (filterInscription === 'yes' && !s.registration_fee_paid) return false;
-    if (filterInscription === 'no' && s.registration_fee_paid) return false;
+    if (filterInscription === 'yes' && !s.is_enrolled) return false;
+    if (filterInscription === 'no' && s.is_enrolled) return false;
     return true;
   });
 
@@ -388,7 +413,7 @@ export default function Students() {
   const avatarColors = ['#2563eb','#7c3aed','#059669','#ea580c','#db2777'];
 
   const activeCount   = studentsList.filter(s => s.status === 'active'   || s.status === 'ACTIVE').length;
-  const pendingCount  = studentsList.filter(s => !s.registration_fee_paid).length;
+  const pendingCount  = studentsList.filter(s => !s.is_enrolled).length;
   const graduateCount = studentsList.filter(s => s.status === 'graduated' || s.status === 'GRADUATED').length;
 
   // Exports reflect the currently filtered list (studentsList), not just the
@@ -405,7 +430,7 @@ export default function Students() {
       'Étudiant': s.full_name || '—',
       'Email': s.email || '—',
       'Programme': s.program_name || '—',
-      'Inscription': s.registration_fee_paid ? 'Inscrit' : 'Non inscrit',
+      'Inscription': s.is_enrolled ? 'Inscrit' : 'Non inscrit',
       'Scolarité': scolariteLabel(s),
       'Statut': s.status || '—',
     }));
@@ -418,7 +443,7 @@ export default function Students() {
       s.matricule || '—',
       s.full_name || '—',
       s.program_name || '—',
-      s.registration_fee_paid ? 'Inscrit' : 'Non inscrit',
+      s.is_enrolled ? 'Inscrit' : 'Non inscrit',
       scolariteLabel(s),
       s.status || '—',
     ]);
@@ -518,7 +543,7 @@ export default function Students() {
                     : s === 'SUSPENDED' ? { label: 'Suspendu', color: '#d97706', bg: '#fef3c7' }
                     : s === 'GRADUATED' ? { label: 'Diplômé', color: '#7c3aed', bg: '#ede9fe' }
                     : { label: s || '—', color: '#64748b', bg: '#f1f5f9' };
-                  const enrolled = student.registration_fee_paid;
+                  const enrolled = student.is_enrolled;
                   return (
                     <tr key={student.id}
                         style={{ borderBottom: '1px solid #f8fafc', background: i % 2 !== 0 ? '#fafbff' : 'transparent' }}
@@ -560,16 +585,30 @@ export default function Students() {
 
                       <td className="px-4 py-2.5">
                         {student.has_payment_schedule || student.echeance_override ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap"
-                                style={student.echeance_override
-                                  ? { color: '#1d4ed8', background: '#dbeafe' }
-                                  : student.tuition_up_to_date
-                                    ? { color: '#059669', background: '#d1fae5' }
-                                    : { color: '#dc2626', background: '#fee2e2' }}>
-                            <span className="h-1.5 w-1.5 rounded-full flex-shrink-0"
-                                  style={{ background: student.echeance_override ? '#1d4ed8' : student.tuition_up_to_date ? '#059669' : '#dc2626' }} />
-                            {student.echeance_override ? 'Admission autorisée' : student.tuition_up_to_date ? 'À jour' : 'Non à jour'}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap"
+                                  style={student.echeance_override
+                                    ? { color: '#1d4ed8', background: '#dbeafe' }
+                                    : student.tuition_up_to_date
+                                      ? { color: '#059669', background: '#d1fae5' }
+                                      : { color: '#dc2626', background: '#fee2e2' }}>
+                              <span className="h-1.5 w-1.5 rounded-full flex-shrink-0"
+                                    style={{ background: student.echeance_override ? '#1d4ed8' : student.tuition_up_to_date ? '#059669' : '#dc2626' }} />
+                              {student.echeance_override ? 'Admission autorisée' : student.tuition_up_to_date ? 'À jour' : 'Non à jour'}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={togglingOverrideId === student.id}
+                              onClick={() => handleToggleEcheanceOverride(student)}
+                              title={student.echeance_override
+                                ? "Révoquer l'autorisation spéciale — l'étudiant redevient soumis à l'échéancier"
+                                : "Autoriser l'accès e-learning malgré le retard de paiement (à régulariser plus tard)"}
+                              className="relative inline-flex h-4 w-8 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50"
+                              style={{ background: student.echeance_override ? '#1d4ed8' : '#cbd5e1' }}>
+                              <span className="inline-block h-3 w-3 rounded-full bg-white shadow transition-transform"
+                                    style={{ transform: student.echeance_override ? 'translateX(17px)' : 'translateX(2px)' }} />
+                            </button>
+                          </div>
                         ) : (
                           <span className="text-[11px]" style={{ color: '#cbd5e1' }}>—</span>
                         )}

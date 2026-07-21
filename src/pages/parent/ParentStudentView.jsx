@@ -76,7 +76,7 @@ function TabResume({ student }) {
   const paid = parseFloat(student.total_paid || 0);
   const tuition = parseFloat(student.tuition_fee || 0);
   const pct = tuition > 0 ? Math.min(100, Math.round((paid / tuition) * 100)) : 0;
-  const isEnrolled = student.registration_fee_paid;
+  const isEnrolled = student.is_enrolled;
 
   return (
     <div className="space-y-5">
@@ -93,12 +93,12 @@ function TabResume({ student }) {
         </div>
         <div>
           <p className="text-sm font-bold" style={{ color: isEnrolled ? '#065f46' : '#92400e' }}>
-            {isEnrolled ? 'Inscription validée' : 'Non inscrit — frais d\'inscription en attente'}
+            {isEnrolled ? 'Inscription validée' : 'Non inscrit — scolarité en attente'}
           </p>
           <p className="text-xs" style={{ color: isEnrolled ? '#047857' : '#b45309' }}>
             {isEnrolled
               ? 'Votre enfant est inscrit et suit les cours.'
-              : 'Les frais d\'inscription doivent être réglés pour valider l\'inscription.'}
+              : 'Le seuil minimum de scolarité doit être réglé pour valider l\'inscription.'}
           </p>
         </div>
       </div>
@@ -717,8 +717,8 @@ export default function ParentStudentView() {
                     student.status === 'ACTIVE' ? 'bg-emerald-400 text-emerald-900' : 'bg-slate-300 text-slate-700'
                   }`}>{student.status === 'ACTIVE' ? 'Actif' : student.status}</span>
                   <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg ${
-                    student.registration_fee_paid ? 'bg-green-400 text-green-900' : 'bg-amber-400 text-amber-900'
-                  }`}>{student.registration_fee_paid ? 'Inscrit' : 'Non inscrit'}</span>
+                    student.is_enrolled ? 'bg-green-400 text-green-900' : 'bg-amber-400 text-amber-900'
+                  }`}>{student.is_enrolled ? 'Inscrit' : 'Non inscrit'}</span>
                   {(student.has_payment_schedule || student.echeance_override) && (
                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg ${
                       student.echeance_override

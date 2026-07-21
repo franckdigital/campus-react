@@ -41,7 +41,6 @@ function ConfirmModal({ message, onConfirm, onCancel }) {
 const TX_CATEGORIES = {
   IN: [
     'Scolarité',
-    "Frais d'inscription",
     "Frais d'examen",
     'Cotisation',
     'Don / Subvention',
@@ -709,7 +708,7 @@ export default function CashRegister() {
                     'Accessible depuis Finances → Trésorerie (onglet dédié)',
                     'Sélectionner une date pour voir les entrées / sorties / net du jour',
                     'Le rapport agrège toutes les sessions ouvertes ce jour-là',
-                    'Plusieurs caisses (ex: Caisse scolarité + Caisse inscription) sont cumulées',
+                    'Plusieurs caisses (ex: Caisse scolarité + Caisse examens) sont cumulées',
                   ],
                 },
                 {

@@ -14,7 +14,7 @@ import { useRegistrationFeeGate } from '../hooks/useRegistrationFeeGate';
 // user's requirement only locks "ressources ... du elearning", not the
 // whole student dashboard.
 export default function FeeGate({ children, elearningGate = false }) {
-  const { loading, registrationFeePaid, modality, tuitionUpToDate, echeanceOverride } = useRegistrationFeeGate();
+  const { loading, isEnrolled, modality, tuitionUpToDate, echeanceOverride } = useRegistrationFeeGate();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -29,7 +29,7 @@ export default function FeeGate({ children, elearningGate = false }) {
   const modalityLocked = elearningGate && modality != null && modality !== 'ELEARNING' && modality !== 'HYBRIDE';
   const elearningLocked = elearningGate && modality === 'ELEARNING' && !tuitionUpToDate && !echeanceOverride;
 
-  if (registrationFeePaid && !elearningLocked && !modalityLocked) return children;
+  if (isEnrolled && !elearningLocked && !modalityLocked) return children;
 
   if (modalityLocked) {
     return (
@@ -101,8 +101,8 @@ export default function FeeGate({ children, elearningGate = false }) {
           Accès restreint
         </h2>
         <p className="text-sm mb-6" style={{ color: '#64748b' }}>
-          Cette fonctionnalité est verrouillée tant que vos frais d'inscription
-          ne sont pas réglés. Rendez-vous dans <strong>Mes finances</strong> pour effectuer le paiement.
+          Cette fonctionnalité est verrouillée tant que le seuil minimum de scolarité
+          n'est pas atteint. Rendez-vous dans <strong>Mes finances</strong> pour effectuer le paiement.
         </p>
         <button
           onClick={() => navigate('/student/finances')}

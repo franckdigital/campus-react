@@ -20,7 +20,7 @@ import { attendanceService } from '../../services/attendance';
 import { documentsService } from '../../services/documents';
 import { useApi } from '../../hooks/useApi';
 import { useNotifications } from '../../components/Notifications';
-import { computeFeeBreakdown, getInvoiceLabel } from '../../utils/feeBreakdown';
+import { getInvoiceLabel } from '../../utils/feeBreakdown';
 
 const SECTION_COLORS = {
   info:      { color: '#2563eb', bg: '#eff6ff', iconBg: '#bfdbfe' },
@@ -134,39 +134,29 @@ export default function StudentDossierPage() {
   const [student, setStudent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [financialInfo, setFinancialInfo] = useState(null);
-  const [configuredFees, setConfiguredFees] = useState({ tuition: 0, registration: 0 });
+  const [configuredFees, setConfiguredFees] = useState({ tuition: 0 });
 
   const applyStudentResponse = (response, finSummary = null) => {
     setStudent(response);
     // Prefer finSummary's live, invoice-derived figures over the Student
     // model's stale snapshot columns (response.tuition_fee/total_paid/...),
-    // which are never reconciled with actual invoices. tuition_fee is the
-    // GRAND total (inscription + scolarité combined) — tuition_fee_only is
-    // the scolarité-only figure this "Scolarité" section actually needs, so
-    // it must be tried first (matches StudentDashboard.jsx/StudentFinances.jsx).
-    const configTuition = parseFloat(finSummary?.tuition_fee_only ?? finSummary?.configured_tuition_fee ?? response?.tuition_fee ?? 0);
-    const configReg = parseFloat(finSummary?.registration_fee ?? finSummary?.configured_registration_fee ?? response?.registration_fee ?? 0);
-    setConfiguredFees({ tuition: configTuition, registration: configReg });
-    const isEnrolled   = finSummary?.registration_fee_paid ?? response?.registration_fee_paid ?? false;
-    const totalPaid    = parseFloat(finSummary?.total_paid ?? response?.total_paid ?? 0);
-    const regDisp      = isEnrolled ? configReg : 0;
-    const tuitionDisp  = Math.max(0, totalPaid - regDisp);
+    // which are never reconciled with actual invoices.
+    const configTuition = parseFloat(finSummary?.configured_tuition_fee ?? response?.tuition_fee ?? 0);
+    setConfiguredFees({ tuition: configTuition });
+    const isEnrolled = finSummary?.is_enrolled ?? response?.is_enrolled ?? false;
+    const totalPaid  = parseFloat(finSummary?.total_paid ?? response?.total_paid ?? 0);
     setFinancialInfo({
-      total_tuition:         configTuition,
-      total_paid:            totalPaid,
-      total_pending:         parseFloat(finSummary?.remaining_balance ?? response?.remaining_balance ?? 0),
-      registration_fee:      configReg,
-      registration_fee_paid: isEnrolled,
-      is_enrolled:           isEnrolled,
-      reg_total:             configReg,
-      reg_paid:              regDisp,
-      reg_balance:           Math.max(0, configReg - regDisp),
-      tuition_total:         configTuition,
-      tuition_paid:          tuitionDisp,
-      tuition_balance:       Math.max(0, configTuition - tuitionDisp),
-      has_payment_schedule:  finSummary?.has_payment_schedule ?? response?.has_payment_schedule ?? false,
-      tuition_up_to_date:    finSummary?.tuition_up_to_date ?? response?.tuition_up_to_date ?? true,
-      echeance_override:     response?.echeance_override ?? finSummary?.echeance_override ?? false,
+      total_tuition:          configTuition,
+      total_paid:             totalPaid,
+      total_pending:          parseFloat(finSummary?.remaining_balance ?? response?.remaining_balance ?? 0),
+      is_enrolled:            isEnrolled,
+      min_enrollment_payment: parseFloat(finSummary?.min_enrollment_payment ?? 0),
+      tuition_total:          configTuition,
+      tuition_paid:           totalPaid,
+      tuition_balance:        Math.max(0, configTuition - totalPaid),
+      has_payment_schedule:   finSummary?.has_payment_schedule ?? response?.has_payment_schedule ?? false,
+      tuition_up_to_date:     finSummary?.tuition_up_to_date ?? response?.tuition_up_to_date ?? true,
+      echeance_override:      response?.echeance_override ?? finSummary?.echeance_override ?? false,
     });
   };
 
@@ -204,38 +194,6 @@ export default function StudentDossierPage() {
     };
     if (studentId) fetchStudent();
   }, [studentId]);
-
-  // Independently fetch the student's invoices to compute the INSCRIPTION /
-  // SCOLARITÉ header breakdown with the exact same logic as the Paiements
-  // tab (computeFeeBreakdown) — so the header shows identical figures
-  // whether or not the Paiements tab has been visited yet.
-  const { data: headerInvoicesData } = useApi(
-    () => financeService.getInvoices({ student: studentId }),
-    [studentId],
-    !!studentId
-  );
-
-  useEffect(() => {
-    if (!headerInvoicesData || !student) return;
-    const list = (headerInvoicesData.results || headerInvoicesData || [])
-      .filter(inv => inv.status !== 'CANCELLED');
-    const breakdown = computeFeeBreakdown(list, {
-      fallbackReg: configuredFees.registration,
-      fallbackTuition: configuredFees.tuition,
-      registrationFeePaidFlag: student?.registration_fee_paid,
-    });
-    setFinancialInfo(prev => prev ? {
-      ...prev,
-      registration_fee_paid: breakdown.isEnrolled,
-      is_enrolled:           breakdown.isEnrolled,
-      reg_total:             breakdown.regTotal,
-      reg_paid:              breakdown.regPaid,
-      reg_balance:           breakdown.regBalance,
-      tuition_total:         breakdown.tuitionTotal,
-      tuition_paid:          breakdown.tuitionPaid,
-      tuition_balance:       breakdown.tuitionBalance,
-    } : prev);
-  }, [headerInvoicesData, student, configuredFees]);
 
   const sections = [
     { id: 'info',      label: 'Informations', icon: User,          ...SECTION_COLORS.info },
@@ -365,7 +323,9 @@ export default function StudentDossierPage() {
                     <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
                       financialInfo.is_enrolled ? 'bg-green-400 text-green-900' : 'bg-amber-400 text-amber-900'
                     }`}>
-                      {financialInfo.is_enrolled ? 'Inscrit' : 'Non inscrit'}
+                      {financialInfo.is_enrolled
+                        ? 'Inscrit'
+                        : `Non inscrit — reste ${Math.max(0, (financialInfo.min_enrollment_payment || 0) - (financialInfo.total_paid || 0)).toLocaleString()} FCFA`}
                     </span>
                   )}
                   {financialInfo && (financialInfo.has_payment_schedule || financialInfo.echeance_override) && (
@@ -390,29 +350,10 @@ export default function StudentDossierPage() {
               </div>
             </div>
 
-            {/* Right: financial mini-KPIs — inscription + scolarité */}
+            {/* Right: financial mini-KPIs — scolarité */}
             {financialInfo && (
               <div className="flex flex-col gap-1.5 flex-shrink-0">
-                {/* Inscription row */}
-                <p className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'rgba(253,186,116,0.9)' }}>Inscription</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { label: 'Total',  value: financialInfo.reg_total    ?? financialInfo.registration_fee, color: 'rgba(255,255,255,0.85)' },
-                    { label: 'Payé',   value: financialInfo.reg_paid     ?? 0, color: '#86efac' },
-                    { label: 'Reste',  value: financialInfo.reg_balance  ?? 0, color: (financialInfo.reg_balance ?? 0) > 0 ? '#fca5a5' : '#86efac' },
-                  ].map((item, i) => (
-                    <div key={i} className="rounded-xl px-3 py-2 text-center"
-                         style={{ background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.2)' }}>
-                      <p className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: 'rgba(253,186,116,0.85)' }}>{item.label}</p>
-                      <p className="text-sm font-extrabold" style={{ color: item.color, letterSpacing: '-0.01em' }}>
-                        {(item.value || 0).toLocaleString()}
-                      </p>
-                      <p className="text-[9px]" style={{ color: 'rgba(255,255,255,0.4)' }}>FCFA</p>
-                    </div>
-                  ))}
-                </div>
-                {/* Scolarité row */}
-                <p className="text-[9px] font-bold uppercase tracking-widest mt-1" style={{ color: 'rgba(147,197,253,0.9)' }}>Scolarité</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'rgba(147,197,253,0.9)' }}>Scolarité</p>
                 <div className="grid grid-cols-3 gap-2">
                   {[
                     { label: 'Total',  value: financialInfo.tuition_total   ?? configuredFees.tuition, color: 'rgba(255,255,255,0.85)' },
@@ -454,24 +395,24 @@ export default function StudentDossierPage() {
                     accent: '#6366f1',
                   },
                   {
-                    step: 2, done: financialInfo?.registration_fee_paid,
-                    label: 'Payer les frais d\'inscription',
-                    where: 'Paiements → Nouvelle facture → Inscription',
-                    desc: 'Paiement unique obligatoire. Débloque l\'accès à l\'inscription en classe.',
+                    step: 2, done: financialInfo?.is_enrolled,
+                    label: `Régler au moins ${(financialInfo?.min_enrollment_payment || 0).toLocaleString()} FCFA de la scolarité`,
+                    where: 'Paiements → Nouvelle facture → Scolarité',
+                    desc: 'Une fois ce seuil atteint, l\'étudiant est considéré inscrit et débloque l\'inscription en classe.',
                     accent: '#d97706',
                   },
                   {
                     step: 3, done: financialInfo?.is_enrolled,
                     label: 'Inscrire en classe',
                     where: 'Onglet Parcours → Inscrire',
-                    desc: 'Choisir la classe et l\'année académique. Disponible après paiement d\'inscription.',
+                    desc: 'Choisir la classe et l\'année académique. Disponible après avoir atteint le seuil d\'inscription.',
                     accent: '#059669',
                   },
                   {
                     step: 4, done: balanceDue <= 0 && (financialInfo?.total_tuition || 0) > 0,
-                    label: 'Payer la scolarité',
+                    label: 'Solder la scolarité',
                     where: 'Paiements → Nouvelle facture → Scolarité',
-                    desc: 'Régler en une ou plusieurs tranches. Chaque versement est tracé.',
+                    desc: 'Régler le reste en une ou plusieurs tranches. Chaque versement est tracé.',
                     accent: '#2563eb',
                   },
                 ].map((s) => (
@@ -531,7 +472,7 @@ export default function StudentDossierPage() {
         {activeSection === 'info'      && <InfoSection student={student} studentId={studentId} onUpdated={reloadStudent} />}
         {activeSection === 'parents'   && <ParentsSection studentId={studentId} initialParents={student.parents || []} />}
         {activeSection === 'parcours'  && <ParcoursSection studentId={studentId} student={student} />}
-        {activeSection === 'paiements' && <PaiementsSection studentId={studentId} student={student} configuredFees={configuredFees} onSummaryUpdate={(data) => setFinancialInfo(prev => ({ ...prev, ...data }))} />}
+        {activeSection === 'paiements' && <PaiementsSection studentId={studentId} student={student} configuredFees={configuredFees} minEnrollmentPayment={financialInfo?.min_enrollment_payment} onSummaryUpdate={(data) => setFinancialInfo(prev => ({ ...prev, ...data }))} onDataChanged={reloadStudent} />}
         {activeSection === 'absences'  && <AbsencesSection studentId={studentId} />}
         {activeSection === 'documents' && <DocumentsSection studentId={studentId} />}
         {activeSection === 'carte'     && <CarteSection studentId={studentId} cards={student.cards || []} student={student} />}
@@ -618,7 +559,7 @@ function InfoSection({ student, studentId, onUpdated }) {
       emergency_contact_name:     student.emergency_contact_name       || '',
       emergency_contact_phone:    student.emergency_contact_phone      || '',
       emergency_contact_relation: student.emergency_contact_relation   || '',
-      registration_fee_paid:      student.registration_fee_paid        || false,
+      is_enrolled:                student.is_enrolled                  || false,
       program_id:                 student.current_class?.program_id    || '',
       level_id:                   student.current_class?.level_id      || '',
       class_id:                   student.current_class?.id            || '',
@@ -672,7 +613,7 @@ function InfoSection({ student, studentId, onUpdated }) {
         emergency_contact_name:     form.emergency_contact_name,
         emergency_contact_phone:    form.emergency_contact_phone,
         emergency_contact_relation: form.emergency_contact_relation,
-        registration_fee_paid:      form.registration_fee_paid,
+        is_enrolled:                form.is_enrolled,
         admission_date:             form.admission_date || null,
         status:                     form.status,
         modality:                   form.modality,
@@ -963,14 +904,17 @@ function InfoSection({ student, studentId, onUpdated }) {
                 <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#059669' }}>Inscription</p>
                 <label className="flex items-center gap-3 cursor-pointer select-none p-3 rounded-xl hover:bg-green-50 transition-colors" style={{ border: '1.5px solid #d1fae5' }}>
                   <div className="relative flex-shrink-0">
-                    <input type="checkbox" className="sr-only" checked={!!form.registration_fee_paid} onChange={e => setF('registration_fee_paid', e.target.checked)} />
-                    <div className="h-5 w-9 rounded-full transition-colors" style={{ background: form.registration_fee_paid ? '#059669' : '#cbd5e1' }}>
-                      <div className="h-4 w-4 rounded-full bg-white shadow transition-transform mt-0.5 ml-0.5" style={{ transform: form.registration_fee_paid ? 'translateX(16px)' : 'translateX(0)' }} />
+                    <input type="checkbox" className="sr-only" checked={!!form.is_enrolled} onChange={e => setF('is_enrolled', e.target.checked)} />
+                    <div className="h-5 w-9 rounded-full transition-colors" style={{ background: form.is_enrolled ? '#059669' : '#cbd5e1' }}>
+                      <div className="h-4 w-4 rounded-full bg-white shadow transition-transform mt-0.5 ml-0.5" style={{ transform: form.is_enrolled ? 'translateX(16px)' : 'translateX(0)' }} />
                     </div>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold" style={{ color: '#1e293b' }}>Frais d'inscription payés</p>
-                    <p className="text-[10px]" style={{ color: '#94a3b8' }}>Active le badge "Inscrit" et autorise l'inscription en classe</p>
+                    <p className="text-xs font-semibold" style={{ color: '#1e293b' }}>Inscrit (seuil de scolarité atteint)</p>
+                    <p className="text-[10px]" style={{ color: '#94a3b8' }}>
+                      Active le badge "Inscrit" et autorise l'inscription en classe. Normalement recalculé automatiquement
+                      depuis les paiements — ne modifier manuellement qu'en cas de correction exceptionnelle.
+                    </p>
                   </div>
                 </label>
               </div>
@@ -1175,7 +1119,7 @@ const STANDARD_METHODS = [
   { code: 'check',         name: 'Chèque' },
 ];
 
-function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate }) {
+function PaiementsSection({ studentId, student, configuredFees, minEnrollmentPayment, onSummaryUpdate, onDataChanged }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [activeTab, setActiveTab] = useState('summary');
@@ -1184,7 +1128,7 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
   const [paying, setPaying] = useState(false);
   const [showWorkflow, setShowWorkflow] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
-  const [invoiceForm, setInvoiceForm] = useState({ fee_type: 'registration', amount: '', amountMode: 'bareme', paid_now: '', method: 'cash', notes: '' });
+  const [invoiceForm, setInvoiceForm] = useState({ amount: '', amountMode: 'bareme', paid_now: '', method: 'cash', notes: '' });
   const [creatingInvoice, setCreatingInvoice] = useState(false);
   const [invoiceError, setInvoiceError] = useState('');
   const itemsPerPage = 10;
@@ -1206,7 +1150,7 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
   const { data: echeancierData } = useApi(
     () => studentsService.getEcheancier(studentId), [studentId, invoices], true
   );
-  // All active barèmes at this student's site, for both categories — the
+  // All active barèmes at this student's site — the
   // invoice form lets the admin pick explicitly from this list instead of
   // either trusting a single auto-resolved amount or typing one blind, which
   // is exactly the kind of manual entry that can drift from whatever barème
@@ -1232,29 +1176,27 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
     const parts = [scope, cfg.modality_name, cfg.affectation_status_name].filter(Boolean);
     return `${parts.join(' · ')} — ${Number(cfg.amount).toLocaleString('fr-FR')} F`;
   };
-  const _sortedFeeConfigs = (category) => allFeeConfigs
-    .filter(c => c.fee_category === category)
+  // Legacy fee_category='INSCRIPTION' rows are always inactive (deactivated
+  // by the merge migration) and already excluded by the is_active filter
+  // above; the extra guard here is defensive.
+  const tuitionConfigs = allFeeConfigs
+    .filter(c => c.fee_category !== 'INSCRIPTION')
     .sort((a, b) => _rankFeeConfig(a) - _rankFeeConfig(b) || Number(b.amount) - Number(a.amount));
-  const registrationConfigs = _sortedFeeConfigs('INSCRIPTION');
-  const tuitionConfigs = _sortedFeeConfigs('SCOLARITE');
 
-  // Auto-select the best-matching barème as soon as the list for the
-  // current fee_type loads, if the form is still in "bareme" mode with
-  // nothing chosen yet (covers the modal's default open state, before the
-  // admin has clicked a "Type de facture" button).
+  // Auto-select the best-matching barème as soon as the list loads, if the
+  // form is still in "bareme" mode with nothing chosen yet (covers the
+  // modal's default open state).
   useEffect(() => {
     if (!showInvoiceModal || invoiceForm.amountMode !== 'bareme' || invoiceForm.selectedConfigId) return;
-    const opts = invoiceForm.fee_type === 'registration' ? registrationConfigs : tuitionConfigs;
-    if (opts.length === 0) return;
-    const best = opts[0];
+    if (tuitionConfigs.length === 0) return;
+    const best = tuitionConfigs[0];
     setInvoiceForm(f => ({
       ...f,
       selectedConfigId: best.id,
       amount: String(best.amount),
-      paid_now: f.fee_type === 'registration' ? String(best.amount) : f.paid_now,
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showInvoiceModal, invoiceForm.fee_type, invoiceForm.amountMode, invoiceForm.selectedConfigId, registrationConfigs.length, tuitionConfigs.length]);
+  }, [showInvoiceModal, invoiceForm.amountMode, invoiceForm.selectedConfigId, tuitionConfigs.length]);
 
   const loading = loadingInvoices || loadingPayments;
   const invoicesList = invoices?.results || invoices || [];
@@ -1269,7 +1211,10 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
   // shows up as a selectable payment target in "Enregistrer un paiement".
   const unpaidInvoices = activeInvoicesList.filter(inv => inv.status !== 'PAID');
 
-  // Sync computed totals to header banner whenever invoices/payments load or refresh
+  // Sync computed totals to header banner whenever invoices/payments load or
+  // refresh. is_enrolled is intentionally NOT sent here — it's the backend's
+  // computed, self-healing figure and is refreshed via onDataChanged (which
+  // re-fetches the financial-summary, the actual source of truth).
   useEffect(() => {
     if (loadingInvoices || loadingPayments || !onSummaryUpdate) return;
     const tPaid    = activeInvoicesList.reduce((s, inv) => s + parseFloat(inv.amount_paid || 0), 0);
@@ -1277,29 +1222,16 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
       .filter(p => p.status === 'PENDING')
       .reduce((s, p) => s + parseFloat(p.amount || 0), 0);
     const fallbackTuition = configuredFees?.tuition || parseFloat(student?.tuition_fee || 0);
-    const fallbackReg = configuredFees?.registration || parseFloat(student?.registration_fee || 0);
-
-    const breakdown = computeFeeBreakdown(activeInvoicesList, {
-      fallbackReg,
-      fallbackTuition,
-      registrationFeePaidFlag: student?.registration_fee_paid,
-    });
-
     const tTuition = activeInvoicesList.reduce((s, inv) => s + parseFloat(inv.total || 0), 0);
+    const total = tTuition || fallbackTuition;
 
     onSummaryUpdate({
-      total_tuition:         tTuition || fallbackTuition,
-      total_paid:            tPaid,
-      total_pending:         tPending,
-      registration_fee:      fallbackReg,
-      registration_fee_paid: breakdown.isEnrolled,
-      is_enrolled:           breakdown.isEnrolled,
-      reg_total:             breakdown.regTotal,
-      reg_paid:              breakdown.regPaid,
-      reg_balance:           breakdown.regBalance,
-      tuition_total:         breakdown.tuitionTotal,
-      tuition_paid:          breakdown.tuitionPaid,
-      tuition_balance:       breakdown.tuitionBalance,
+      total_tuition:   total,
+      total_paid:      tPaid,
+      total_pending:   tPending,
+      tuition_total:   total,
+      tuition_paid:    tPaid,
+      tuition_balance: Math.max(0, total - tPaid),
     });
   }, [invoices, payments, loadingInvoices, loadingPayments]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1336,6 +1268,7 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
       setPayForm({ invoice_id: '', amount: '', method_id: 'cash' });
       refetchInvoices();
       refetchPayments();
+      onDataChanged?.();
     } catch (err) {
       alert(err.message || 'Erreur lors du paiement');
     } finally {
@@ -1347,12 +1280,11 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
     e.preventDefault();
     setInvoiceError('');
     setCreatingInvoice(true);
-    const isRegistration = invoiceForm.fee_type === 'registration';
     // Always trust invoiceForm.amount — it's already kept in sync with
     // whichever barème the admin explicitly picked from the list (or typed
     // manually), by the select's own onChange handler. This used to
-    // recompute its own amount from configuredFees.registration/tuition (the
-    // single auto-resolved value from financial_summary) instead, silently
+    // recompute its own amount from configuredFees.tuition (the single
+    // auto-resolved value from financial_summary) instead, silently
     // discarding whatever barème the admin actually selected in the list —
     // if that single auto-resolution happened to be wrong (e.g. the
     // student's current enrollment itself was wrong), the invoice got priced
@@ -1360,18 +1292,17 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
     const totalAmount = parseFloat(invoiceForm.amount) || 0;
     const paidNow = parseFloat(invoiceForm.paid_now) || 0;
     try {
-      // Get or create fee type
+      // Get or create fee type — single "scolarité" type now (no more
+      // separate "inscription" fee type).
       let feeTypesList = [];
       try { const ft = await financeService.getFeeTypes(); feeTypesList = ft?.results || ft || []; } catch {}
-      let feeType = isRegistration
-        ? feeTypesList.find(ft => ft.code?.toLowerCase().includes('registration') || ft.code?.toLowerCase().includes('inscription') || ft.name?.toLowerCase().includes('inscription'))
-        : feeTypesList.find(ft => ft.code?.toLowerCase().includes('tuition') || ft.name?.toLowerCase().includes('scolarité') || ft.code?.toLowerCase().includes('scolarite'));
+      let feeType = feeTypesList.find(ft => ft.code?.toLowerCase().includes('tuition') || ft.name?.toLowerCase().includes('scolarité') || ft.code?.toLowerCase().includes('scolarite'));
       if (!feeType) {
         try {
           feeType = await financeService.createFeeType({
-            name: isRegistration ? 'Frais d\'inscription' : 'Frais de scolarité',
-            code: isRegistration ? 'REGISTRATION' : 'TUITION',
-            description: isRegistration ? 'Frais d\'inscription annuels' : 'Frais de scolarité annuels',
+            name: 'Frais de scolarité',
+            code: 'TUITION',
+            description: 'Frais de scolarité annuels',
             default_amount: totalAmount, is_recurring: false,
           });
         } catch (err) { console.log('createFeeType failed', err); }
@@ -1397,14 +1328,14 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
         site: siteId,
         academic_year: academicYearId,
         due_date: dueDateStr,
-        notes: invoiceForm.notes || (isRegistration ? 'Frais d\'inscription' : 'Frais de scolarité'),
+        notes: invoiceForm.notes || 'Frais de scolarité',
       });
       if (!invoice?.id) throw new Error('La facture n\'a pas été créée');
       // Add item
       if (feeType && totalAmount > 0) {
         await financeService.addInvoiceItem(invoice.id, {
           fee_type: feeType.id,
-          description: isRegistration ? 'Frais d\'inscription' : 'Frais de scolarité',
+          description: 'Frais de scolarité',
           quantity: 1, unit_price: totalAmount,
         });
       }
@@ -1435,21 +1366,15 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
           try { await financeService.deletePayment(payment.id); } catch {}
           throw new Error('Validation du paiement échouée. Vérifiez la configuration comptable du site.');
         }
-        // Update student financial data
-        if (isRegistration && paidNow >= totalAmount) {
-          try {
-            await studentsService.update(studentId, {
-              registration_fee: totalAmount,
-              registration_fee_paid: true,
-              status: 'ACTIVE',
-            });
-          } catch (err) { console.log('update student failed', err); }
-        }
+        // is_enrolled is recomputed server-side (self-healing signal) from
+        // cumulative payments vs the configurable threshold — no manual
+        // student update needed here anymore.
       }
       setShowInvoiceModal(false);
-      setInvoiceForm({ fee_type: 'registration', amount: '', amountMode: 'bareme', paid_now: '', method: 'cash', notes: '' });
+      setInvoiceForm({ amount: '', amountMode: 'bareme', paid_now: '', method: 'cash', notes: '' });
       refetchInvoices();
       refetchPayments();
+      onDataChanged?.();
     } catch (err) {
       setInvoiceError(err.message || 'Erreur lors de la création de la facture');
     } finally {
@@ -1458,18 +1383,13 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
   };
 
   // Helper: open invoice modal with amount pre-filled from barème.
-  // Inscription is always paid in one single, full payment — paid_now is
-  // locked to match the total amount, never left blank/partial/manual.
-  const openInvoiceModal = (feeType) => {
-    const opts = feeType === 'registration' ? registrationConfigs : tuitionConfigs;
-    const best = opts[0];
-    const amountStr = best ? String(best.amount) : '';
+  const openInvoiceModal = () => {
+    const best = tuitionConfigs[0];
     setInvoiceForm({
-      fee_type: feeType,
-      amount: amountStr,
+      amount: best ? String(best.amount) : '',
       amountMode: best ? 'bareme' : 'custom',
       selectedConfigId: best?.id || '',
-      paid_now: feeType === 'registration' ? amountStr : '',
+      paid_now: '',
       method: 'cash', notes: '',
     });
     setInvoiceError('');
@@ -1477,72 +1397,35 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
   };
 
   // Compute from actual invoices and payments (source of truth) — cancelled
-  // invoices are excluded so they no longer contribute to any total.
-  const _tTuition = activeInvoicesList.reduce((s, inv) => s + parseFloat(inv.total || 0), 0);
-  const _tPaid    = activeInvoicesList.reduce((s, inv) => s + parseFloat(inv.amount_paid || 0), 0);
+  // invoices are excluded so they no longer contribute to any total. There's
+  // only one fee concept now (scolarité), so no more inscription/tuition
+  // invoice-splitting by regex.
+  const _fallbackTuition = configuredFees?.tuition || parseFloat(student?.tuition_fee || 0);
+  const tuitionTotal   = activeInvoicesList.length > 0
+    ? activeInvoicesList.reduce((s, inv) => s + parseFloat(inv.total || 0), 0)
+    : _fallbackTuition;
+  const tuitionPaid    = activeInvoicesList.reduce((s, inv) => s + parseFloat(inv.amount_paid || 0), 0);
+  const tuitionBalance = Math.max(0, tuitionTotal - tuitionPaid);
   const _tPending = paymentsList
     .filter(p => p.status === 'PENDING')
     .reduce((s, p) => s + parseFloat(p.amount || 0), 0);
 
-  const _fallbackTuition = configuredFees?.tuition || parseFloat(student?.tuition_fee || 0);
-  const _fallbackReg = configuredFees?.registration || parseFloat(student?.registration_fee || 0);
+  // is_enrolled comes straight from the Student record (self-healing,
+  // recomputed server-side from cumulative payments vs the configurable
+  // threshold) — no more client-side derivation from invoice text.
+  const isEnrolled = student?.is_enrolled || false;
+  const minEnroll = minEnrollmentPayment || 0;
+  const enrollRemaining = Math.max(0, minEnroll - tuitionPaid);
+
   const summary = {
-    total_tuition:         activeInvoicesList.length > 0 ? _tTuition : _fallbackTuition,
-    total_paid:            _tPaid,
-    total_pending:         _tPending,
-    balance_due:           Math.max(0, (activeInvoicesList.length > 0 ? _tTuition : _fallbackTuition) - _tPaid),
-    registration_fee_paid: student?.registration_fee_paid || false,
-    is_enrolled:           student?.registration_fee_paid || false,
-    registration_fee:      _fallbackReg,
+    total_tuition:          tuitionTotal,
+    total_paid:             tuitionPaid,
+    total_pending:          _tPending,
+    balance_due:            tuitionBalance,
+    is_enrolled:            isEnrolled,
+    min_enrollment_payment: minEnroll,
+    enroll_remaining:       enrollRemaining,
   };
-
-  // Frais d'inscription : calculer depuis les factures d'inscription
-  const regInvoices = activeInvoicesList.filter(inv => {
-    const invText = `${inv.notes || ''} ${inv.description || ''}`.toLowerCase();
-    if (invText.includes('inscription')) return true;
-    if ((inv.fee_type_codes || []).some(c => /inscri|regist/i.test(c))) return true;
-    return (inv.items || []).some(it => {
-      const itText = `${it.description || ''} ${it.fee_type_name || ''} ${it.fee_type_code || ''}`.toLowerCase();
-      return itText.includes('inscription') || itText.includes('registration');
-    });
-  });
-  const isEnrolledFromInvoices = regInvoices.some(inv => inv.status === 'PAID');
-  // Recalculate is_enrolled now that regInvoices is available
-  summary.is_enrolled           = student?.registration_fee_paid || isEnrolledFromInvoices;
-  summary.registration_fee_paid = student?.registration_fee_paid || isEnrolledFromInvoices;
-  const regPaidAmount = regInvoices.reduce((s, inv) => s + parseFloat(inv.amount_paid || 0), 0);
-  const regTotal = summary.registration_fee ||
-    regInvoices.reduce((s, inv) => s + parseFloat(inv.total || 0), 0);
-  summary.reg_total        = regTotal;
-  summary.reg_paid_amount  = regPaidAmount;
-  summary.reg_balance      = Math.max(0, regTotal - regPaidAmount);
-  summary.reg_has_invoices = regInvoices.length > 0;
-  summary.reg_invoice_id   = regInvoices.find(inv => inv.status !== 'PAID' && inv.status !== 'CANCELLED')?.id || null;
-
-  // Display values for registration card (used in KPIs and in the card below)
-  const displayPaid    = (summary.is_enrolled && regPaidAmount === 0 && regTotal > 0)
-                           ? regTotal
-                           : regPaidAmount;
-  const displayBalance = Math.max(0, regTotal - displayPaid);
-  const displayPct     = regTotal > 0
-                           ? Math.min(100, Math.round((displayPaid / regTotal) * 100))
-                           : (summary.is_enrolled ? 100 : 0);
-
-  // Frais de scolarité : calculer depuis les factures de scolarité
-  const tuitionInvoices = activeInvoicesList.filter(inv => {
-    const invText = `${inv.notes || ''} ${inv.description || ''}`.toLowerCase();
-    if (invText.includes('scolarité') || invText.includes('scolarite') || invText.includes('tuition')) return true;
-    if ((inv.fee_type_codes || []).some(c => /tuition|scolarit/i.test(c))) return true;
-    return (inv.items || []).some(it => {
-      const itText = `${it.description || ''} ${it.fee_type_name || ''} ${it.fee_type_code || ''}`.toLowerCase();
-      return itText.includes('tuition') || itText.includes('scolarit');
-    });
-  });
-  const tuitionTotal   = tuitionInvoices.length > 0
-    ? tuitionInvoices.reduce((s, inv) => s + parseFloat(inv.total || 0), 0)
-    : _fallbackTuition;
-  const tuitionPaid    = tuitionInvoices.reduce((s, inv) => s + parseFloat(inv.amount_paid || 0), 0);
-  const tuitionBalance = Math.max(0, tuitionTotal - tuitionPaid);
 
   const filteredInvoices = invoicesList.filter(inv => {
     if (!searchTerm) return true;
@@ -1565,15 +1448,10 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
   if (loading) return <Spinner color={C.color} />;
 
   const kpis = [
-    { label: 'Total inscription', value: regTotal,       color: '#d97706', bg: '#fef3c7', icon: Award },
-    { label: 'Payé inscription',  value: displayPaid,    color: '#059669', bg: '#d1fae5', icon: CheckCircle },
-    { label: 'En attente',        value: _tPending,      color: '#f59e0b', bg: '#fef3c7', icon: Clock },
-    { label: 'Reste inscription', value: displayBalance, color: displayBalance > 0 ? '#ef4444' : '#059669', bg: displayBalance > 0 ? '#fee2e2' : '#d1fae5', icon: TrendingUp },
-  ];
-  const tuitionKpis = [
     { label: 'Total scolarité', value: tuitionTotal,   color: '#2563eb', bg: '#dbeafe', icon: DollarSign },
-    { label: 'Payé scolarité',  value: tuitionPaid,    color: '#059669', bg: '#d1fae5', icon: CheckCircle },
-    { label: 'Reste scolarité', value: tuitionBalance, color: tuitionBalance > 0 ? '#ef4444' : '#059669', bg: tuitionBalance > 0 ? '#fee2e2' : '#d1fae5', icon: TrendingUp },
+    { label: 'Payé',            value: tuitionPaid,    color: '#059669', bg: '#d1fae5', icon: CheckCircle },
+    { label: 'En attente',      value: _tPending,      color: '#f59e0b', bg: '#fef3c7', icon: Clock },
+    { label: 'Reste',           value: tuitionBalance, color: tuitionBalance > 0 ? '#ef4444' : '#059669', bg: tuitionBalance > 0 ? '#fee2e2' : '#d1fae5', icon: TrendingUp },
   ];
 
   const tabs = [
@@ -1592,7 +1470,7 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
             title="Comprendre le workflow">
             <FileText className="h-3 w-3" /> Guide
           </button>
-          <button onClick={() => openInvoiceModal(summary.is_enrolled ? 'tuition' : 'registration')}
+          <button onClick={() => openInvoiceModal()}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-all"
             style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', boxShadow: '0 2px 8px rgba(124,58,237,0.30)' }}>
             <FileText className="h-3.5 w-3.5" /> Nouvelle facture
@@ -1628,28 +1506,28 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
               },
               {
                 step: 2, done: summary.is_enrolled, accent: '#d97706',
-                label: 'Frais d\'inscription',
-                comment: summary.is_enrolled ? 'Payé ✓' : 'À faire — obligatoire',
-                desc: 'Créer une facture d\'inscription, puis la payer intégralement. Ce paiement unique débloque l\'inscription en classe.',
-                where: 'Cliquer "Nouvelle facture" → Frais d\'inscription',
-                action: !summary.is_enrolled ? () => openInvoiceModal('registration') : null,
-                actionLabel: 'Créer facture d\'inscription',
+                label: `Régler au moins ${minEnroll.toLocaleString()} F de la scolarité`,
+                comment: summary.is_enrolled ? 'Inscrit ✓' : `Reste ${summary.enroll_remaining.toLocaleString()} F`,
+                desc: 'Créer une facture de scolarité, puis payer jusqu\'à atteindre le seuil d\'inscription. Débloque l\'inscription en classe.',
+                where: 'Cliquer "Nouvelle facture"',
+                action: !summary.is_enrolled ? () => openInvoiceModal() : null,
+                actionLabel: 'Créer facture de scolarité',
               },
               {
                 step: 3, done: summary.is_enrolled, accent: '#059669',
                 label: 'Inscrire en classe',
-                comment: summary.is_enrolled ? 'Inscrit ✓' : 'Bloqué — payer inscription d\'abord',
-                desc: 'Une fois les frais d\'inscription payés, aller dans l\'onglet Parcours pour choisir la classe et l\'année académique.',
+                comment: summary.is_enrolled ? 'Inscrit ✓' : 'Bloqué — atteindre le seuil d\'abord',
+                desc: 'Une fois le seuil d\'inscription atteint, aller dans l\'onglet Parcours pour choisir la classe et l\'année académique.',
                 where: 'Onglet Parcours → Inscrire',
                 action: null,
               },
               {
                 step: 4, done: summary.balance_due <= 0 && summary.total_tuition > 0, accent: '#2563eb',
-                label: 'Frais de scolarité',
+                label: 'Solder la scolarité',
                 comment: summary.balance_due > 0 ? `Reste ${summary.balance_due.toLocaleString()} F` : (summary.total_tuition > 0 ? 'Soldé ✓' : 'À configurer'),
-                desc: 'Créer une facture de scolarité puis régler en une ou plusieurs tranches. Utiliser "Nouveau paiement" pour chaque versement.',
-                where: 'Nouvelle facture → Scolarité, puis Nouveau paiement',
-                action: summary.is_enrolled && summary.balance_due > 0 ? () => openInvoiceModal('tuition') : null,
+                desc: 'Régler le reste en une ou plusieurs tranches. Utiliser "Nouveau paiement" pour chaque versement.',
+                where: 'Nouvelle facture → Nouveau paiement',
+                action: summary.balance_due > 0 ? () => openInvoiceModal() : null,
                 actionLabel: 'Créer facture de scolarité',
               },
             ].map((s) => (
@@ -1705,56 +1583,65 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
         ))}
       </div>
 
-      {/* Frais d'inscription card */}
+      {/* Frais de scolarité card — merges what used to be separate
+          "inscription" and "scolarité" cards, plus the enrollment threshold
+          status (is_enrolled is a single computed flag now, no more split). */}
       {(() => {
-        const isPartial      = displayPaid > 0 && displayBalance > 0;
-        const regColor       = summary.is_enrolled ? '#059669' : isPartial ? '#d97706' : '#7c3aed';
-        const regBg          = summary.is_enrolled ? '#d1fae5' : isPartial ? '#fef3c7' : '#ede9fe';
-        const regStatus      = summary.is_enrolled ? 'Payé ✓' : isPartial ? 'Partiel' : 'À régler';
+        const isPartial = tuitionPaid > 0 && tuitionBalance > 0;
+        const color      = summary.is_enrolled ? '#059669' : isPartial ? '#d97706' : '#7c3aed';
+        const bg         = summary.is_enrolled ? '#d1fae5' : isPartial ? '#fef3c7' : '#ede9fe';
+        const pct        = tuitionTotal > 0 ? Math.min(100, Math.round((tuitionPaid / tuitionTotal) * 100)) : 0;
 
-        // Facture d'inscription non soldée (pour le bouton Acompte)
-        const openRegInvoiceId = summary.reg_invoice_id;
+        // Facture non soldée (pour le bouton Acompte)
+        const openInvoiceId = unpaidInvoices[0]?.id || null;
 
         return (
-          <div className="card p-5 overflow-hidden relative" style={{ border: `1.5px solid ${regColor}30` }}>
-            <div className="absolute -right-4 -top-4 h-20 w-20 rounded-full opacity-[0.06] blur-xl" style={{ background: regColor }} />
+          <div className="card p-5 overflow-hidden relative" style={{ border: `1.5px solid ${color}30` }}>
+            <div className="absolute -right-4 -top-4 h-20 w-20 rounded-full opacity-[0.06] blur-xl" style={{ background: color }} />
 
             {/* Header */}
-            <div className="flex items-start justify-between gap-3 mb-4">
+            <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                     style={{ background: `linear-gradient(135deg, ${regBg}, ${regColor}22)`, boxShadow: `0 4px 12px ${regColor}20` }}>
-                  <Award className="h-4.5 w-4.5" style={{ color: regColor }} />
+                     style={{ background: `linear-gradient(135deg, ${bg}, ${color}22)`, boxShadow: `0 4px 12px ${color}20` }}>
+                  <Award className="h-4.5 w-4.5" style={{ color }} />
                 </div>
                 <div>
-                  <p className="text-xs font-extrabold uppercase tracking-wide" style={{ color: '#475569' }}>Frais d&apos;inscription</p>
-                  <p className="text-lg font-extrabold mt-0.5" style={{ color: regColor, letterSpacing: '-0.02em' }}>
-                    {regTotal > 0 ? `${regTotal.toLocaleString()} F` : 'Non configuré'}
+                  <p className="text-xs font-extrabold uppercase tracking-wide" style={{ color: '#475569' }}>Frais de scolarité</p>
+                  <p className="text-lg font-extrabold mt-0.5" style={{ color, letterSpacing: '-0.02em' }}>
+                    {tuitionTotal > 0 ? `${tuitionTotal.toLocaleString()} F` : 'Non configuré'}
                   </p>
                 </div>
               </div>
-              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0"
-                    style={{ background: `${regColor}15`, color: regColor }}>
-                {regStatus}
-              </span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0"
+                      style={{ background: summary.is_enrolled ? '#d1fae5' : '#fef3c7', color: summary.is_enrolled ? '#059669' : '#d97706' }}>
+                  {summary.is_enrolled ? 'Inscrit ✓' : `Non inscrit — reste ${summary.enroll_remaining.toLocaleString()} F pour le seuil`}
+                </span>
+              </div>
             </div>
 
             {/* Progress bar */}
-            {regTotal > 0 && (
+            {tuitionTotal > 0 && (
               <div className="mb-4">
                 <div className="flex justify-between items-center mb-1.5">
                   <span className="text-[11px] font-semibold" style={{ color: '#64748b' }}>
-                    Payé : <strong style={{ color: regColor }}>{displayPaid.toLocaleString()} F</strong>
+                    Payé : <strong style={{ color }}>{tuitionPaid.toLocaleString()} F</strong>
                   </span>
-                  <span className="text-[11px] font-bold" style={{ color: regColor }}>{displayPct}%</span>
+                  <span className="text-[11px] font-bold" style={{ color }}>{pct}%</span>
                 </div>
                 <div className="h-2 rounded-full overflow-hidden" style={{ background: '#f1f5f9' }}>
                   <div className="h-full rounded-full transition-all duration-500"
-                       style={{ width: `${displayPct}%`, background: `linear-gradient(90deg, ${regColor}99, ${regColor})` }} />
+                       style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${color}99, ${color})` }} />
                 </div>
-                {displayBalance > 0 ? (
+                {!summary.is_enrolled && summary.min_enrollment_payment > 0 && (
+                  <p className="text-[11px] mt-1.5 font-semibold" style={{ color: '#d97706' }}>
+                    Seuil d&apos;inscription : {summary.min_enrollment_payment.toLocaleString()} F
+                  </p>
+                )}
+                {tuitionBalance > 0 ? (
                   <p className="text-[11px] mt-1.5 font-semibold" style={{ color: '#94a3b8' }}>
-                    Reste à payer : <span style={{ color: '#ef4444', fontWeight: 700 }}>{displayBalance.toLocaleString()} F</span>
+                    Reste à payer : <span style={{ color: '#ef4444', fontWeight: 700 }}>{tuitionBalance.toLocaleString()} F</span>
                   </p>
                 ) : (
                   <p className="text-[11px] mt-1.5 font-semibold" style={{ color: '#059669' }}>
@@ -1766,31 +1653,31 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
 
             {/* Action buttons */}
             <div className="flex gap-2">
-              {/* Créer facture + payer (quand pas encore de facture d'inscription) */}
-              {!summary.is_enrolled && !summary.reg_has_invoices && (
+              {/* Créer facture + payer (quand aucune facture n'existe encore) */}
+              {activeInvoicesList.length === 0 && (
                 <button
                   onClick={() => {
                     setInvoiceForm({
-                      fee_type: 'registration',
-                      amount: regTotal > 0 ? String(regTotal) : '',
+                      amount: tuitionTotal > 0 ? String(tuitionTotal) : '',
+                      amountMode: tuitionTotal > 0 ? 'bareme' : 'custom',
                       paid_now: '',
                       method: 'cash',
-                      notes: "Frais d'inscription",
+                      notes: 'Frais de scolarité',
                     });
                     setInvoiceError('');
                     setShowInvoiceModal(true);
                   }}
                   className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold text-white transition-all"
-                  style={{ background: `linear-gradient(135deg, ${regColor}, ${regColor}cc)`, boxShadow: `0 2px 8px ${regColor}30` }}>
+                  style={{ background: `linear-gradient(135deg, ${color}, ${color}cc)`, boxShadow: `0 2px 8px ${color}30` }}>
                   <Plus className="h-3.5 w-3.5" /> Créer &amp; Payer
                 </button>
               )}
 
               {/* Acompte : paiement partiel sur facture existante */}
-              {displayBalance > 0 && openRegInvoiceId && (
+              {tuitionBalance > 0 && openInvoiceId && (
                 <button
                   onClick={() => {
-                    setPayForm({ invoice_id: openRegInvoiceId, amount: '', method_id: 'cash' });
+                    setPayForm({ invoice_id: openInvoiceId, amount: '', method_id: 'cash' });
                     setShowPayModal(true);
                   }}
                   className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold text-white transition-all"
@@ -1799,22 +1686,22 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
                 </button>
               )}
 
-              {/* Nouvelle facture d'inscription (quand facture existe mais pas soldée) */}
-              {!summary.is_enrolled && summary.reg_has_invoices && displayBalance > 0 && !openRegInvoiceId && (
+              {/* Nouvelle facture (facture existe mais tout est soldé et il reste un solde à couvrir) */}
+              {activeInvoicesList.length > 0 && tuitionBalance > 0 && !openInvoiceId && (
                 <button
                   onClick={() => {
                     setInvoiceForm({
-                      fee_type: 'registration',
-                      amount: String(displayBalance),
+                      amount: String(tuitionBalance),
+                      amountMode: 'custom',
                       paid_now: '',
                       method: 'cash',
-                      notes: "Frais d'inscription (complément)",
+                      notes: 'Frais de scolarité (complément)',
                     });
                     setInvoiceError('');
                     setShowInvoiceModal(true);
                   }}
                   className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold text-white transition-all"
-                  style={{ background: `linear-gradient(135deg, ${regColor}, ${regColor}cc)` }}>
+                  style={{ background: `linear-gradient(135deg, ${color}, ${color}cc)` }}>
                   <Plus className="h-3.5 w-3.5" /> Payer le reste
                 </button>
               )}
@@ -1822,23 +1709,6 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
           </div>
         );
       })()}
-
-      {/* Frais de scolarité — 3 KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {tuitionKpis.map((k, i) => (
-          <div key={i} className="card p-4 overflow-hidden relative">
-            <div className="absolute -right-3 -top-3 h-14 w-14 rounded-full opacity-[0.07] blur-lg" style={{ background: k.color }} />
-            <div className="h-10 w-10 rounded-xl flex items-center justify-center mb-3"
-                 style={{ background: `linear-gradient(135deg, ${k.bg}, ${k.color}22)`, boxShadow: `0 4px 12px ${k.color}20` }}>
-              <k.icon className="h-4.5 w-4.5" style={{ color: k.color }} />
-            </div>
-            <p className="kpi-label mb-1">{k.label}</p>
-            <p className="text-base font-extrabold" style={{ color: k.color, letterSpacing: '-0.02em' }}>
-              {(k.value || 0).toLocaleString()} F
-            </p>
-          </div>
-        ))}
-      </div>
 
       {/* Échéancier de scolarité — per-installment breakdown, only shown when
           a schedule is actually configured for this student's site/niveau */}
@@ -1913,19 +1783,19 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold" style={{ color: summary.is_enrolled ? '#065f46' : '#92400e' }}>
-            {summary.is_enrolled ? 'Inscription validée — frais d\'inscription réglés' : 'Non inscrit — frais d\'inscription requis'}
+            {summary.is_enrolled ? 'Inscription validée — seuil de scolarité atteint' : 'Non inscrit — seuil de scolarité non atteint'}
           </p>
           <p className="text-xs" style={{ color: summary.is_enrolled ? '#047857' : '#b45309' }}>
             {summary.is_enrolled
-              ? 'L\'étudiant peut être inscrit en classe (onglet Parcours) et ses frais de scolarité peuvent être réglés.'
-              : 'Étape 2 : Créer une facture d\'inscription et la payer intégralement pour débloquer l\'inscription en classe.'}
+              ? 'L\'étudiant peut être inscrit en classe (onglet Parcours) et le reste de la scolarité peut être réglé.'
+              : `Régler au moins ${summary.min_enrollment_payment.toLocaleString()} F de la scolarité (reste ${summary.enroll_remaining.toLocaleString()} F) pour débloquer l'inscription en classe.`}
           </p>
         </div>
         {!summary.is_enrolled && (
-          <button onClick={() => openInvoiceModal('registration')}
+          <button onClick={() => openInvoiceModal()}
             className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-all"
             style={{ background: 'linear-gradient(135deg, #d97706, #b45309)', boxShadow: '0 2px 8px rgba(217,119,6,0.3)' }}>
-            <Plus className="h-3.5 w-3.5" /> Créer facture d'inscription
+            <Plus className="h-3.5 w-3.5" /> Créer facture de scolarité
           </button>
         )}
       </div>
@@ -2131,7 +2001,7 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
                                   try {
                                     await financeService.deletePayment(payment.id);
                                     refetchPayments();
-                                    reloadStudent?.();
+                                    onDataChanged?.();
                                   } catch { alert('Erreur lors de l\'annulation'); }
                                 }}
                                 className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold transition-colors hover:bg-red-100"
@@ -2195,7 +2065,7 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
                 </p>
               ) : (
                 <p style={{ color: '#92400e' }}>
-                  <span className="font-bold">⚠ Frais d'inscription non payés.</span> Le premier paiement doit couvrir les frais d'inscription pour débloquer l'inscription en classe.
+                  <span className="font-bold">⚠ Seuil d'inscription non atteint.</span> Reste {summary.enroll_remaining.toLocaleString()} F à payer pour débloquer l'inscription en classe.
                 </p>
               )}
             </div>
@@ -2299,63 +2169,21 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
 
             {/* Scrollable body */}
             <div className="flex-1 overflow-y-auto">
-            {/* Type selector */}
-            <div className="px-6 pt-5 pb-3">
-              <p className="text-xs font-bold mb-2" style={{ color: '#475569' }}>Type de facture *</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {[
-                  { value: 'registration', label: 'Frais d\'inscription', desc: 'Paiement unique — débloque l\'inscription en classe', color: '#d97706', bg: '#fffbeb' },
-                  { value: 'tuition', label: 'Frais de scolarité', desc: 'Scolarité annuelle — peut se régler en tranches', color: '#2563eb', bg: '#eff6ff' },
-                ].map(t => (
-                  <button key={t.value} type="button"
-                    onClick={() => {
-                      const opts = t.value === 'registration' ? registrationConfigs : tuitionConfigs;
-                      const best = opts[0];
-                      setInvoiceForm(f => ({
-                        ...f,
-                        fee_type: t.value,
-                        amountMode: best ? 'bareme' : 'custom',
-                        selectedConfigId: best?.id || '',
-                        amount: best ? String(best.amount) : '',
-                        paid_now: t.value === 'registration' ? (best ? String(best.amount) : '') : f.paid_now,
-                      }));
-                    }}
-                    className="p-3 rounded-xl text-left transition-all"
-                    style={invoiceForm.fee_type === t.value
-                      ? { background: t.bg, border: `2px solid ${t.color}`, boxShadow: `0 2px 8px ${t.color}20` }
-                      : { background: '#f8fafc', border: '1.5px solid #e2e8f0' }}>
-                    <p className="text-xs font-bold mb-0.5" style={{ color: invoiceForm.fee_type === t.value ? t.color : '#475569' }}>{t.label}</p>
-                    <p className="text-[10px] leading-tight" style={{ color: '#94a3b8' }}>{t.desc}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <form onSubmit={handleCreateInvoice} className="px-6 pb-5 space-y-4">
+            <form onSubmit={handleCreateInvoice} className="px-6 pt-5 pb-5 space-y-4">
               {/* Context info */}
-              <div className="p-3 rounded-xl text-[11px]"
-                   style={{ background: invoiceForm.fee_type === 'registration' ? '#fffbeb' : '#eff6ff',
-                            border: `1px solid ${invoiceForm.fee_type === 'registration' ? '#fde68a' : '#bfdbfe'}` }}>
-                {invoiceForm.fee_type === 'registration' ? (
-                  <p style={{ color: '#92400e' }}>
-                    <strong>Frais d'inscription :</strong> Ce paiement unique est obligatoire avant toute inscription en classe.
-                    Une fois la facture créée et payée intégralement, l'étudiant sera éligible à l'inscription (onglet Parcours).
-                  </p>
-                ) : (
-                  <p style={{ color: '#1e40af' }}>
-                    <strong>Frais de scolarité :</strong> Créer la facture totale, puis régler en plusieurs versements via "Nouveau paiement".
-                    Chaque versement est tracé dans l'onglet Versements.
-                  </p>
-                )}
+              <div className="p-3 rounded-xl text-[11px]" style={{ background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+                <p style={{ color: '#1e40af' }}>
+                  <strong>Frais de scolarité :</strong> Créer la facture totale, puis régler en plusieurs versements via "Nouveau paiement".
+                  L'étudiant est considéré inscrit dès que le cumul payé atteint le seuil d'inscription configuré.
+                  Chaque versement est tracé dans l'onglet Versements.
+                </p>
               </div>
 
               <div>
                 <label className="block text-xs font-bold mb-1.5" style={{ color: '#475569' }}>
                   Montant total (FCFA) *
                 </label>
-                {(() => {
-                  const opts = invoiceForm.fee_type === 'registration' ? registrationConfigs : tuitionConfigs;
-                  return opts.length > 0 ? (
+                {tuitionConfigs.length > 0 ? (
                     <div className="space-y-2">
                       <select
                         className="input-field cursor-pointer"
@@ -2366,30 +2194,24 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
                             setInvoiceForm(f => ({ ...f, amountMode: 'custom', selectedConfigId: '', amount: '' }));
                             return;
                           }
-                          const cfg = opts.find(c => c.id === val);
+                          const cfg = tuitionConfigs.find(c => c.id === val);
                           const newAmount = cfg ? String(cfg.amount) : '';
                           setInvoiceForm(f => ({
                             ...f,
                             amountMode: 'bareme',
                             selectedConfigId: val,
                             amount: newAmount,
-                            // Inscription is always paid in full — keep paid_now locked to amount
-                            paid_now: f.fee_type === 'registration' ? newAmount : f.paid_now,
                           }));
                         }}
                         style={{ borderColor: '#c4b5fd' }}>
                         <option value="" disabled>Choisir un barème…</option>
-                        {opts.map(cfg => <option key={cfg.id} value={cfg.id}>{_feeConfigLabel(cfg)}</option>)}
+                        {tuitionConfigs.map(cfg => <option key={cfg.id} value={cfg.id}>{_feeConfigLabel(cfg)}</option>)}
                         <option value="custom">Montant personnalisé…</option>
                       </select>
                       {invoiceForm.amountMode === 'custom' && (
                         <input type="number" min="1" step="1" required
                           value={invoiceForm.amount}
-                          onChange={e => setInvoiceForm(f => ({
-                            ...f,
-                            amount: e.target.value,
-                            paid_now: f.fee_type === 'registration' ? e.target.value : f.paid_now,
-                          }))}
+                          onChange={e => setInvoiceForm(f => ({ ...f, amount: e.target.value }))}
                           onWheel={e => e.target.blur()}
                           className="input-field" placeholder="Saisir le montant"
                           style={{ borderColor: '#c4b5fd' }} />
@@ -2403,48 +2225,29 @@ function PaiementsSection({ studentId, student, configuredFees, onSummaryUpdate 
                       </div>
                       <input type="number" min="1" step="1" required
                         value={invoiceForm.amount}
-                        onChange={e => setInvoiceForm(f => ({
-                          ...f,
-                          amount: e.target.value,
-                          paid_now: f.fee_type === 'registration' ? e.target.value : f.paid_now,
-                        }))}
+                        onChange={e => setInvoiceForm(f => ({ ...f, amount: e.target.value }))}
                         onWheel={e => e.target.blur()}
                         className="input-field" placeholder="ex: 150000"
                         style={{ borderColor: '#c4b5fd' }} />
                     </div>
-                  );
-                })()}
+                  )}
               </div>
 
               <div className="rounded-xl overflow-hidden" style={{ border: '1.5px solid #e2e8f0' }}>
                 <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                  <p className="text-xs font-bold" style={{ color: '#475569' }}>
-                    {invoiceForm.fee_type === 'registration' ? 'Paiement (obligatoire)' : 'Payer maintenant (optionnel)'}
-                  </p>
-                  <p className="text-[10px]" style={{ color: '#94a3b8' }}>
-                    {invoiceForm.fee_type === 'registration'
-                      ? "L'inscription se paie intégralement, en un seul versement"
-                      : 'Laisser vide pour créer la facture sans paiement'}
-                  </p>
+                  <p className="text-xs font-bold" style={{ color: '#475569' }}>Payer maintenant (optionnel)</p>
+                  <p className="text-[10px]" style={{ color: '#94a3b8' }}>Laisser vide pour créer la facture sans paiement</p>
                 </div>
                 <div className="p-4 space-y-3">
                   <div>
                     <label className="block text-xs font-bold mb-1.5" style={{ color: '#475569' }}>Montant versé maintenant (FCFA)</label>
-                    {invoiceForm.fee_type === 'registration' ? (
-                      <input type="number" readOnly disabled
-                        value={invoiceForm.paid_now}
-                        className="input-field" style={{ borderColor: '#bbf7d0', background: '#f8fafc', cursor: 'not-allowed' }} />
-                    ) : (
-                      <input type="number" min="0" step="1"
-                        value={invoiceForm.paid_now}
-                        onChange={e => setInvoiceForm(f => ({ ...f, paid_now: e.target.value }))}
-                        onWheel={e => e.target.blur()}
-                        className="input-field" placeholder="0 = créer sans payer"
-                        style={{ borderColor: '#bbf7d0' }} />
-                    )}
-                    {invoiceForm.fee_type === 'registration' ? (
-                      <p className="text-[11px] mt-1 font-semibold" style={{ color: '#059669' }}>✓ Paiement intégral — facture soldée immédiatement</p>
-                    ) : invoiceForm.amount && invoiceForm.paid_now && parseFloat(invoiceForm.paid_now) >= parseFloat(invoiceForm.amount) && (
+                    <input type="number" min="0" step="1"
+                      value={invoiceForm.paid_now}
+                      onChange={e => setInvoiceForm(f => ({ ...f, paid_now: e.target.value }))}
+                      onWheel={e => e.target.blur()}
+                      className="input-field" placeholder="0 = créer sans payer"
+                      style={{ borderColor: '#bbf7d0' }} />
+                    {invoiceForm.amount && invoiceForm.paid_now && parseFloat(invoiceForm.paid_now) >= parseFloat(invoiceForm.amount) && (
                       <p className="text-[11px] mt-1 font-semibold" style={{ color: '#059669' }}>✓ Paiement intégral — facture soldée immédiatement</p>
                     )}
                   </div>

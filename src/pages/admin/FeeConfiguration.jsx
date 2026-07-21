@@ -23,11 +23,13 @@ const AFFECTATIONS = [
   { value: 'NON_AFFECTE', label: 'Non affecté (Privé)' },
 ];
 
-// Inscription and scolarité are two separate barème rows (fee_category),
-// never two amounts on one row — the échéancier only ever attaches to a
-// SCOLARITE row, inscription is always paid in full at inscription.
+// Legacy: a handful of fee_category='INSCRIPTION' rows may still exist in
+// the DB from before the merge, always deactivated (is_active=false). They
+// are shown read-only, for history only — never created or edited anymore.
+// Going forward every barème is implicitly SCOLARITE; the API ignores/
+// rejects any fee_category sent in create/update payloads.
 const CATEGORIES = [
-  { value: 'INSCRIPTION', label: 'Inscription' },
+  { value: 'INSCRIPTION', label: 'Inscription (historique)' },
   { value: 'SCOLARITE',   label: 'Scolarité' },
 ];
 
@@ -38,7 +40,6 @@ const emptyForm = {
   academic_year: '',
   modality: '',
   affectation_status: '',
-  fee_category: '',
   amount: '',
   label: '',
   is_active: true,
@@ -81,7 +82,6 @@ function FeeModal({ editing, defaultSite, sites, programs, levels, academicYears
     academic_year: editing.academic_year ?? '',
     modality: editing.modality ?? '',
     affectation_status: editing.affectation_status ?? '',
-    fee_category: editing.fee_category ?? '',
     amount: editing.amount ?? '',
     label: editing.label ?? '',
     is_active: editing.is_active ?? true,
@@ -92,10 +92,6 @@ function FeeModal({ editing, defaultSite, sites, programs, levels, academicYears
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.fee_category) {
-      notify('Choisissez une catégorie (Inscription ou Scolarité)', 'error');
-      return;
-    }
     setSaving(true);
     try {
       const payload = {
@@ -105,7 +101,6 @@ function FeeModal({ editing, defaultSite, sites, programs, levels, academicYears
         academic_year: form.academic_year || null,
         modality: form.modality || null,
         affectation_status: form.affectation_status || null,
-        fee_category: form.fee_category,
         amount: parseFloat(form.amount) || 0,
         label: form.label,
         is_active: form.is_active,
@@ -154,43 +149,6 @@ function FeeModal({ editing, defaultSite, sites, programs, levels, academicYears
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* Catégorie — décide si ce barème peut recevoir un échéancier.
-              Verrouillée en édition : Inscription et Scolarité sont deux
-              lignes permanentes distinctes (deux fee_category différentes
-              partagent le même site/programme/niveau/année) — la changer ici
-              ne créerait pas une 2e ligne, elle transformerait silencieusement
-              la ligne existante (avec ses factures/tranches déjà liées) en
-              l'autre catégorie. Pour créer l'autre catégorie, utiliser "Nouveau barème". */}
-          <div>
-            <label className="block text-xs font-bold mb-1.5 text-slate-500">Catégorie *</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {CATEGORIES.map(c => (
-                <button key={c.value} type="button"
-                  disabled={!!editing}
-                  onClick={() => set('fee_category', c.value)}
-                  className="py-2.5 rounded-xl text-sm font-bold border-2 transition-all"
-                  style={{
-                    ...(form.fee_category === c.value
-                      ? { borderColor: COLOR, background: '#ecfeff', color: COLOR }
-                      : { borderColor: '#e2e8f0', color: '#94a3b8' }),
-                    ...(editing ? { opacity: 0.6, cursor: 'not-allowed' } : {}),
-                  }}>
-                  {c.label}
-                </button>
-              ))}
-            </div>
-            {editing && (
-              <p className="text-[11px] mt-1.5 text-slate-400">
-                La catégorie ne peut pas être modifiée après création — créez un nouveau barème pour l'autre catégorie.
-              </p>
-            )}
-            {!editing && form.fee_category === 'INSCRIPTION' && (
-              <p className="text-[11px] mt-1.5 text-slate-400">
-                Payée intégralement à l'inscription — pas d'échéancier possible.
-              </p>
-            )}
-          </div>
-
           {/* Label optionnel */}
           <div>
             <label className="block text-xs font-bold mb-1.5 text-slate-500">Libellé (optionnel)</label>
@@ -530,14 +488,14 @@ export default function FeeConfigurationPage() {
         iconColor={COLOR}
         iconBg="#ecfeff"
         title="Barème des frais"
-        subtitle="Paramétrez les frais d'inscription et de scolarité par site, niveau et filière"
+        subtitle="Paramétrez les frais de scolarité par site, niveau et filière"
         action={
           <PrimaryButton icon={Plus} label="Nouveau barème" onClick={() => { setEditItem(null); setShowModal(true); }} color={COLOR} />
         }
       />
 
       <FilterBar>
-        <FilterSelect value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+        <FilterSelect value={filterCategory} onChange={e => setFilterCategory(e.target.value)} title="Les barèmes d'inscription sont historiques et toujours inactifs">
           <option value="">Toutes catégories</option>
           {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
         </FilterSelect>
@@ -577,7 +535,8 @@ export default function FeeConfigurationPage() {
           <p className="text-xs mt-0.5" style={{ color: '#0e7490', opacity: 0.8 }}>
             Lors de l'inscription d'un étudiant, le système applique le barème le plus précis :
             <strong> Site + Niveau + Année</strong> &gt; Site + Niveau &gt; Site &gt; Général (sans restriction).
-            Inscription et scolarité sont deux barèmes séparés — l'échéancier n'est configurable que sur un barème de scolarité.
+            Un seul barème par niveau : il n'y a plus de distinction inscription / scolarité — le seuil d'inscription
+            (montant minimum à payer pour être considéré « inscrit ») se configure dans Paramètres → Réglages généraux.
           </p>
         </div>
       </div>
@@ -632,8 +591,9 @@ export default function FeeConfigurationPage() {
                   <span className="px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap"
                     style={fee.fee_category === 'SCOLARITE'
                       ? { background: '#dbeafe', color: '#1d4ed8' }
-                      : { background: '#fef3c7', color: '#b45309' }}>
-                    {fee.fee_category_name || (fee.fee_category === 'SCOLARITE' ? 'Scolarité' : 'Inscription')}
+                      : { background: '#f1f5f9', color: '#94a3b8' }}
+                    title={fee.fee_category === 'SCOLARITE' ? undefined : 'Ligne historique, désactivée — la catégorie Inscription n\'existe plus'}>
+                    {fee.fee_category === 'SCOLARITE' ? 'Scolarité' : 'Inscription (historique)'}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-slate-600"><div className="truncate w-[140px]" title={fee.site_name || ''}>{fee.site_name || <span className="text-slate-300 italic">Tous</span>}</div></td>

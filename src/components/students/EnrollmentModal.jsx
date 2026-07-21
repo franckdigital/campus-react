@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, GraduationCap, AlertTriangle, CheckCircle, CreditCard, DollarSign } from 'lucide-react';
 import { academicService } from '../../services/academic';
 import { financeService } from '../../services/finance';
-import { studentsService } from '../../services/students';
 import { useApi } from '../../hooks/useApi';
 
 const PAYMENT_METHODS = [
@@ -29,7 +28,6 @@ export default function EnrollmentModal({ student, onClose, onSuccess, isReenrol
   const [payment, setPayment] = useState({ amount: '', method: 'cash' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [eligibility, setEligibility] = useState({ eligible: false, loading: true, message: '' });
 
   const { data: classes } = useApi(() => academicService.getClasses({ is_active: true }), [], true);
   const { data: academicYears } = useApi(() => academicService.getAcademicYears?.({ is_active: true }) || Promise.resolve([]), [], true);
@@ -37,41 +35,13 @@ export default function EnrollmentModal({ student, onClose, onSuccess, isReenrol
   const classesList = classes?.results || classes || [];
   const yearsList = academicYears?.results || academicYears || [];
 
-  useEffect(() => {
-    // Editing an existing enrollment (e.g. fixing a wrong class) isn't a new
-    // registration — the eligibility/payment gate below only makes sense for
-    // creating one from scratch.
-    if (editing) { setEligibility({ eligible: true, loading: false, message: '' }); return; }
-    const checkEligibility = async () => {
-      try {
-        const result = await financeService.checkEnrollmentEligibility?.(student.id).catch(() => null);
-        if (result) {
-          setEligibility({ eligible: result.eligible, loading: false, message: result.message, registration_fee_paid: result.registration_fee_paid, amount_due: result.amount_due });
-        } else {
-          const invoices = await financeService.getStudentInvoices?.(student.id).catch(() =>
-            financeService.getInvoices?.({ student: student.id })
-          ) || [];
-          const invoicesList = invoices?.results || invoices || [];
-          const registrationPaid = invoicesList.some(inv =>
-            (inv.notes?.toLowerCase().includes('inscription') ||
-             (inv.items || []).some(it =>
-               it.description?.toLowerCase().includes('inscription') ||
-               it.fee_type_name?.toLowerCase().includes('inscription')
-             )) && inv.status === 'PAID'
-          ) || student?.registration_fee_paid;
-          setEligibility({
-            eligible: registrationPaid || invoicesList.length === 0,
-            loading: false,
-            message: registrationPaid ? 'Frais d\'inscription payés' : 'Les frais d\'inscription doivent être payés avant l\'inscription',
-            registration_fee_paid: registrationPaid,
-          });
-        }
-      } catch {
-        setEligibility({ eligible: true, loading: false, message: '' });
-      }
-    };
-    checkEligibility();
-  }, [student.id, student.registration_fee_paid]);
+  // Eligibility to enroll in a class: the student must already be "inscrit"
+  // (is_enrolled — cumulative scolarité payments reached the configurable
+  // minimum threshold, self-healing server-side from invoices/payments), or
+  // the admin pays enough right here to cross that threshold. Editing an
+  // existing enrollment (e.g. fixing a wrong class) isn't a new registration,
+  // so the gate doesn't apply.
+  const eligible = !!editing || isReenrollment || !!student?.is_enrolled;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -94,8 +64,8 @@ export default function EnrollmentModal({ student, onClose, onSuccess, isReenrol
       }
       return;
     }
-    if (!eligibility.eligible && !isReenrollment && !parseFloat(payment.amount)) {
-      setError('L\'étudiant doit payer les frais d\'inscription avant de pouvoir être inscrit.');
+    if (!eligible && !parseFloat(payment.amount)) {
+      setError('L\'étudiant doit atteindre le seuil minimum de scolarité avant de pouvoir être inscrit.');
       return;
     }
     setLoading(true);
@@ -104,23 +74,27 @@ export default function EnrollmentModal({ student, onClose, onSuccess, isReenrol
       // 1. Create enrollment
       await academicService.createEnrollment(formData);
 
-      // 2. Record registration payment if amount provided
+      // 2. Record a scolarité payment if amount provided — is_enrolled is
+      // recomputed server-side (self-healing signal) from cumulative
+      // payments vs the configurable threshold, no manual student update
+      // needed.
       const paidAmount = parseFloat(payment.amount);
       if (paidAmount > 0) {
         try {
-          // Get or create REGISTRATION fee type
+          // Get or create TUITION fee type
           let feeTypesList = [];
           try { const ft = await financeService.getFeeTypes(); feeTypesList = ft?.results || ft || []; } catch {}
           let feeType = feeTypesList.find(ft =>
-            ft.code?.toLowerCase().includes('registration') ||
-            ft.name?.toLowerCase().includes('inscription')
+            ft.code?.toLowerCase().includes('tuition') ||
+            ft.name?.toLowerCase().includes('scolarité') ||
+            ft.code?.toLowerCase().includes('scolarite')
           );
           if (!feeType) {
             try {
               feeType = await financeService.createFeeType({
-                name: 'Frais d\'inscription',
-                code: 'REGISTRATION',
-                description: 'Frais d\'inscription annuels',
+                name: 'Frais de scolarité',
+                code: 'TUITION',
+                description: 'Frais de scolarité annuels',
                 default_amount: paidAmount,
                 is_recurring: false,
               });
@@ -139,13 +113,13 @@ export default function EnrollmentModal({ student, onClose, onSuccess, isReenrol
               site: siteId,
               academic_year: academicYearId,
               due_date: dueDate,
-              notes: 'Frais d\'inscription',
+              notes: 'Frais de scolarité',
             });
 
             if (invoice?.id && feeType) {
               await financeService.addInvoiceItem(invoice.id, {
                 fee_type: feeType.id,
-                description: 'Frais d\'inscription',
+                description: 'Frais de scolarité',
                 quantity: 1,
                 unit_price: paidAmount,
               });
@@ -176,19 +150,12 @@ export default function EnrollmentModal({ student, onClose, onSuccess, isReenrol
                   payment_method: method.id,
                   amount: paidAmount,
                   status: 'PENDING',
-                  notes: `Frais d'inscription — ${selectedMethod?.name || 'Espèces'}`,
+                  notes: `Frais de scolarité — ${selectedMethod?.name || 'Espèces'}`,
                 });
                 await financeService.validatePayment(paymentRecord.id);
               }
             }
           }
-
-          // Also update student flags directly (belt-and-suspenders)
-          await studentsService.update(student.id, {
-            registration_fee_paid: true,
-            registration_fee: paidAmount,
-          }).catch(() => {});
-
         } catch (payErr) {
           console.warn('Payment recording failed but enrollment created:', payErr);
         }
@@ -205,7 +172,7 @@ export default function EnrollmentModal({ student, onClose, onSuccess, isReenrol
   };
 
   const amountValue = parseFloat(payment.amount) || 0;
-  const canSubmit = eligibility.eligible || isReenrollment || amountValue > 0;
+  const canSubmit = eligible || amountValue > 0;
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
@@ -243,9 +210,9 @@ export default function EnrollmentModal({ student, onClose, onSuccess, isReenrol
                 </div>
                 <div className="px-4 py-3 flex items-start gap-3">
                   {[
-                    { step: '1', label: 'Frais d\'inscription', desc: 'Obligatoire avant l\'inscription.', done: eligibility.eligible || amountValue > 0 },
+                    { step: '1', label: 'Seuil de scolarité', desc: 'Montant minimum requis avant l\'inscription.', done: eligible },
                     { step: '2', label: 'Inscription en classe', desc: 'Choisir la classe et l\'année.', done: false },
-                    { step: '3', label: 'Frais de scolarité', desc: 'À régler en cours d\'année.', done: false },
+                    { step: '3', label: 'Solde de scolarité', desc: 'À régler en cours d\'année.', done: false },
                   ].map((s, i) => (
                     <div key={i} className="flex-1 flex items-start gap-2 text-[10px]">
                       {i > 0 && <div className="w-3 flex-shrink-0 mt-2" style={{ borderTop: '1.5px dashed #94a3b8' }} />}
@@ -264,25 +231,20 @@ export default function EnrollmentModal({ student, onClose, onSuccess, isReenrol
                 </div>
               </div>
 
-              {eligibility.loading ? (
-                <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl flex items-center gap-3">
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
-                  <p className="text-sm text-gray-600">Vérification de l'éligibilité...</p>
-                </div>
-              ) : eligibility.eligible ? (
+              {eligible ? (
                 <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-3">
                   <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
                   <div>
                     <p className="font-medium text-green-800">Éligible à l'inscription</p>
-                    <p className="text-sm text-green-600">Les frais d'inscription ont été payés intégralement.</p>
+                    <p className="text-sm text-green-600">Le seuil minimum de scolarité a été atteint.</p>
                   </div>
                 </div>
               ) : (
                 <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3">
                   <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0" />
                   <div>
-                    <p className="font-medium text-amber-800">Frais d'inscription non encore enregistrés</p>
-                    <p className="text-sm text-amber-600">Renseignez le montant payé ci-dessous pour les enregistrer maintenant.</p>
+                    <p className="font-medium text-amber-800">Seuil de scolarité non encore atteint</p>
+                    <p className="text-sm text-amber-600">Renseignez le montant payé ci-dessous pour l'enregistrer maintenant.</p>
                   </div>
                 </div>
               )}
@@ -340,7 +302,7 @@ export default function EnrollmentModal({ student, onClose, onSuccess, isReenrol
             <div className="px-4 py-2.5 flex items-center gap-2" style={{ borderBottom: '1px solid #bbf7d0', background: '#dcfce7' }}>
               <DollarSign className="h-4 w-4" style={{ color: '#059669' }} />
               <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#059669' }}>
-                Frais d'inscription (optionnel)
+                Paiement de scolarité (optionnel)
               </p>
             </div>
             <div className="p-4 space-y-3">
@@ -375,7 +337,7 @@ export default function EnrollmentModal({ student, onClose, onSuccess, isReenrol
               )}
               {amountValue > 0 && (
                 <p className="text-xs font-medium" style={{ color: '#059669' }}>
-                  ✓ Une facture d'inscription de <strong>{amountValue.toLocaleString()} F</strong> sera créée et marquée comme payée.
+                  ✓ Une facture de scolarité de <strong>{amountValue.toLocaleString()} F</strong> sera créée et marquée comme payée.
                 </p>
               )}
             </div>
@@ -388,9 +350,9 @@ export default function EnrollmentModal({ student, onClose, onSuccess, isReenrol
               Annuler
             </button>
             <button type="submit"
-              disabled={loading || (!editing && (eligibility.loading || !canSubmit))}
+              disabled={loading || (!editing && !canSubmit)}
               className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-blue-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              title={!editing && !canSubmit ? 'Frais d\'inscription requis ou montant à saisir' : ''}>
+              title={!editing && !canSubmit ? 'Seuil de scolarité requis ou montant à saisir' : ''}>
               {loading ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />

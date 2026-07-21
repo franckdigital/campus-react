@@ -34,7 +34,7 @@ const MODULES = [
   {
     id: 'fee-config',
     title: 'Barème des frais',
-    description: "Configurer les frais d'inscription et de scolarité par site, filière et niveau",
+    description: "Configurer les frais de scolarité par site, filière et niveau",
     icon: DollarSign,
     gradient: 'linear-gradient(135deg, #22d3ee, #0891b2)',
     path: '/admin/fee-config',
@@ -135,7 +135,7 @@ export default function ParametresHub() {
             <p>• <span className="font-medium" style={{ color: '#64748b' }}>Workspace Studio</span> — Personnalisez logo, nom et couleurs de l'interface</p>
             <p>• <span className="font-medium" style={{ color: '#64748b' }}>Gestion des Sites</span> — Configurez les sites et campus de l'établissement</p>
             <p>• <span className="font-medium" style={{ color: '#64748b' }}>Filières, Niveaux & Classes</span> — Structurez l'offre pédagogique par site</p>
-            <p>• <span className="font-medium" style={{ color: '#64748b' }}>Barème des frais</span> — Fixez les montants d'inscription et de scolarité</p>
+            <p>• <span className="font-medium" style={{ color: '#64748b' }}>Barème des frais</span> — Fixez les montants de scolarité par site, filière et niveau</p>
             <p>• <span className="font-medium" style={{ color: '#64748b' }}>Alertes & Rappels</span> — Rappels automatiques et manuels d'échéancier et d'examens</p>
             <p>• <span className="font-medium" style={{ color: '#64748b' }}>Droits & Permissions</span> — Configurez les niveaux d'accès par rôle</p>
             <p>• <span className="font-medium" style={{ color: '#64748b' }}>Paramètres généraux</span> — Établissement, académique, finance, sécurité...</p>
