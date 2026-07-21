@@ -180,6 +180,8 @@ export default function Students() {
       if (!formData.last_name?.trim())  { notify('Le nom est requis', 'error'); return; }
       if (!formData.email?.trim())      { notify('L\'email est requis', 'error'); return; }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) { notify('Email invalide', 'error'); return; }
+    } else if (!formData.matricule?.trim()) {
+      notify('Le matricule est requis', 'error'); return;
     }
     const effectiveSite = formData.site_id || (selectedSite !== 'all' ? selectedSite : null);
     if (!editingStudent && !effectiveSite) { notify('Sélectionnez un site', 'error'); return; }
@@ -187,6 +189,7 @@ export default function Students() {
     try {
       if (editingStudent) {
         const payload = {
+          matricule: formData.matricule,
           gender: formData.gender,
           birth_date: formData.date_of_birth || undefined,
           birth_place: formData.place_of_birth || undefined,
