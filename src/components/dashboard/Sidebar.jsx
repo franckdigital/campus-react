@@ -14,7 +14,7 @@ const navGroups = [
   {
     label: 'Général',
     items: [
-      { name: 'Dashboard', href: '/admin', icon: LayoutDashboard,
+      { name: 'Accueil', href: '/admin', icon: LayoutDashboard,
         color: '#6366f1', bg: '#eef2ff', iconBg: '#e0e7ff' },
       { name: 'Statistiques', href: '/admin/statistics', icon: PieChart,
         color: '#0891b2', bg: '#ecfeff', iconBg: '#cffafe' },
