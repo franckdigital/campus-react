@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { GraduationCap, ShieldCheck } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 
 export default function EscamFooter() {
   return (
@@ -8,11 +8,8 @@ export default function EscamFooter() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
           {/* Brand */}
           <div className="lg:col-span-2">
-            <Link to="/escam" className="flex items-center gap-2.5 mb-4">
-              <div className="h-9 w-9 rounded-xl flex items-center justify-center"
-                   style={{ background: 'linear-gradient(135deg, #0ea5e9, #0369a1)' }}>
-                <GraduationCap className="h-5 w-5 text-white" />
-              </div>
+            <Link to="/" className="flex items-center gap-2.5 mb-4">
+              <img src="/logo.png" alt="ESCAM" className="h-9 w-9 object-contain" />
               <span className="text-lg font-bold">ESCAM</span>
             </Link>
             <p className="text-gray-400 text-sm max-w-sm leading-relaxed">
@@ -36,10 +33,9 @@ export default function EscamFooter() {
           <div>
             <h4 className="text-sm font-semibold mb-5 text-gray-200">Accès</h4>
             <ul className="space-y-3 text-sm">
-              <li><Link to="/login" className="text-gray-400 hover:text-white transition-colors">Portail étudiant</Link></li>
+              <li><Link to="/login" className="text-gray-400 hover:text-white transition-colors">Tableau de bord</Link></li>
               <li><a href="#admission" className="text-gray-400 hover:text-white transition-colors">Admission</a></li>
               <li><a href="#etudiant" className="text-gray-400 hover:text-white transition-colors">Espace étudiant</a></li>
-              <li><Link to="/" className="text-gray-400 hover:text-white transition-colors">Vitrine CampusLMS</Link></li>
             </ul>
           </div>
         </div>

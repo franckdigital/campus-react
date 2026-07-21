@@ -152,7 +152,7 @@ export default function EscamHome() {
                 <Link to="/login"
                   className="inline-flex items-center gap-2 px-8 py-4 text-white font-semibold rounded-xl hover:shadow-2xl transition-all"
                   style={{ background: `linear-gradient(135deg, ${SKY}, ${SKY_DARK})`, boxShadow: `0 8px 24px ${SKY}50` }}>
-                  Portail Étudiant
+                  Tableau de bord
                   <ArrowRight className="h-5 w-5" />
                 </Link>
                 <a href="#filieres" className="inline-flex items-center gap-2 px-8 py-4 bg-white/10 backdrop-blur-sm text-white font-medium rounded-xl hover:bg-white/20 transition-all">
@@ -469,7 +469,7 @@ export default function EscamHome() {
               <Link to="/login"
                 className="inline-flex items-center gap-2 px-8 py-4 bg-white font-semibold rounded-xl hover:bg-gray-100 transition-colors"
                 style={{ color: SKY_DARK }}>
-                Portail Étudiant
+                Tableau de bord
                 <ArrowRight className="h-5 w-5" />
               </Link>
               <a href="#admission" className="inline-flex items-center gap-2 px-8 py-4 bg-white/10 text-white font-medium rounded-xl hover:bg-white/20 transition-colors">

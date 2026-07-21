@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Menu, X, GraduationCap, ArrowLeftRight } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 
 const NAV_LINKS = [
   { href: '#filieres', label: 'Filières' },
@@ -17,11 +17,8 @@ export default function EscamNavbar() {
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-18 py-3 items-center justify-between">
           {/* Logo */}
-          <Link to="/escam" className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-xl flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #0ea5e9, #0369a1)' }}>
-              <GraduationCap className="h-5 w-5 text-white" />
-            </div>
+          <Link to="/" className="flex items-center gap-2.5">
+            <img src="/logo.png" alt="ESCAM" className="h-9 w-9 object-contain" />
             <span className="text-lg font-bold text-gray-900">ESCAM</span>
           </Link>
 
@@ -36,16 +33,12 @@ export default function EscamNavbar() {
 
           {/* CTA buttons */}
           <div className="hidden lg:flex lg:items-center lg:gap-4">
-            <Link to="/" className="flex items-center gap-1.5 text-xs font-semibold text-gray-400 hover:text-sky-600 transition-colors">
-              <ArrowLeftRight className="h-3.5 w-3.5" />
-              Vitrine CampusLMS
-            </Link>
             <Link
               to="/login"
               className="px-5 py-2.5 text-white text-sm font-semibold rounded-xl hover:shadow-lg transition-all"
               style={{ background: 'linear-gradient(135deg, #0ea5e9, #0369a1)' }}
             >
-              Portail Étudiant
+              Tableau de bord
             </Link>
           </div>
 
@@ -70,13 +63,9 @@ export default function EscamNavbar() {
               ))}
             </div>
             <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
-              <Link to="/" className="flex items-center justify-center gap-1.5 px-4 py-2 text-center text-gray-400 hover:bg-gray-50 rounded-lg text-sm">
-                <ArrowLeftRight className="h-3.5 w-3.5" />
-                Vitrine CampusLMS
-              </Link>
               <Link to="/login" className="block px-4 py-2.5 text-white text-center rounded-xl font-semibold"
                 style={{ background: 'linear-gradient(135deg, #0ea5e9, #0369a1)' }}>
-                Portail Étudiant
+                Tableau de bord
               </Link>
             </div>
           </div>
