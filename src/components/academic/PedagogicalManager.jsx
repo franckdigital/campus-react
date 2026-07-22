@@ -446,8 +446,8 @@ export default function PedagogicalManager({ showHeader = true }) {
         <Tab active={tab === 'levels'}   onClick={() => setTab('levels')}   icon={BarChart3}    label="Niveaux"     count={levels.length}   color={C.level}   />
         <Tab active={tab === 'classes'}  onClick={() => setTab('classes')}  icon={Layers}       label="Classes"     count={classes.length}  color={C.class}   />
         <Tab active={tab === 'subjects'} onClick={() => setTab('subjects')} icon={BookOpen}     label="Matières"    count={subjects.length} color={C.subject} />
-        <Tab active={tab === 'students'} onClick={() => setTab('students')} icon={Users}        label="Étudiants"   count={students.length} color={C.student} />
-        <Tab active={tab === 'teachers'} onClick={() => setTab('teachers')} icon={UserCheck}     label="Enseignants" count={teachers.length} color={C.teacher} />
+        {/* Étudiants/Enseignants temporairement masqués ici (à revoir plus tard) —
+            logique et onglets conservés intacts plus bas, juste pas d'accès depuis cette barre. */}
       </div>
 
       {/* Filter bar */}
