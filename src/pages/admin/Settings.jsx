@@ -56,6 +56,21 @@ export default function Settings() {
         min_enrollment_payment: minEnrollment?.value ?? prev.min_enrollment_payment,
       }));
     }
+
+    const name    = rows.find(r => r.key === 'INSTITUTION_NAME');
+    const email   = rows.find(r => r.key === 'CONTACT_EMAIL');
+    const phone   = rows.find(r => r.key === 'CONTACT_PHONE');
+    const website = rows.find(r => r.key === 'WEBSITE');
+    const address = rows.find(r => r.key === 'ADDRESS');
+    if (name || email || phone || website || address) {
+      setGeneralData(prev => ({
+        institution_name: name?.value    ?? prev.institution_name,
+        contact_email:    email?.value   ?? prev.contact_email,
+        phone:            phone?.value   ?? prev.phone,
+        website:          website?.value ?? prev.website,
+        address:          address?.value ?? prev.address,
+      }));
+    }
   }, [financeConfigs]);
 
   useEffect(() => {
@@ -113,7 +128,11 @@ export default function Settings() {
     setSaving(true);
     try {
       if (section === 'général') {
-        await academicService.updateSettings?.(generalData) || await new Promise(r => setTimeout(r, 600));
+        await configService.setValue('INSTITUTION_NAME', generalData.institution_name);
+        await configService.setValue('CONTACT_EMAIL', generalData.contact_email);
+        await configService.setValue('CONTACT_PHONE', generalData.phone);
+        await configService.setValue('WEBSITE', generalData.website);
+        await configService.setValue('ADDRESS', generalData.address);
       } else if (section === 'finance') {
         await configService.setValue('default_payment_method', financeData.default_payment_method);
         if (financeData.default_payment_method === 'Mobile Money') {

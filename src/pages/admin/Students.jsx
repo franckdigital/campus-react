@@ -56,7 +56,7 @@ export default function Students() {
     program_id: '', level_id: '', class_id: '',
     enrollment_date: new Date().toISOString().split('T')[0],
     status: 'active', modality: 'PRESENTIEL', affectation_status: 'NON_AFFECTE', photo: null, photoPreview: null,
-    is_former_student: false,
+    is_former_student: false, is_enrolled: false,
   };
 
   const [formData, setFormData] = useState(emptyForm);
@@ -199,6 +199,7 @@ export default function Students() {
           status: formData.status?.toUpperCase() || 'ACTIVE',
           modality: formData.modality || 'PRESENTIEL',
           affectation_status: formData.affectation_status || 'NON_AFFECTE',
+          is_enrolled: formData.is_enrolled,
           emergency_contact_name: formData.emergency_contact_name || undefined,
           emergency_contact_phone: formData.emergency_contact_phone || undefined,
           ...(photoDataUrl && { photo: photoDataUrl }),
@@ -326,6 +327,7 @@ export default function Students() {
         status: (full.status || 'active').toLowerCase(),
         modality: full.modality || 'PRESENTIEL',
         affectation_status: full.affectation_status || 'NON_AFFECTE',
+        is_enrolled: full.is_enrolled || false,
         photo: null,
         photoPreview: null,
       });
@@ -869,6 +871,24 @@ export default function Students() {
               </FormSelect>
             </FormField>
           </FormSection>
+
+          {editingStudent && (
+            <label className="flex items-center gap-3 cursor-pointer select-none p-3 rounded-xl hover:bg-green-50 transition-colors" style={{ border: '1.5px solid #d1fae5' }}>
+              <div className="relative flex-shrink-0">
+                <input type="checkbox" className="sr-only" checked={!!formData.is_enrolled} onChange={e => set('is_enrolled', e.target.checked)} />
+                <div className="h-5 w-9 rounded-full transition-colors" style={{ background: formData.is_enrolled ? '#059669' : '#cbd5e1' }}>
+                  <div className="h-4 w-4 rounded-full bg-white shadow transition-transform mt-0.5 ml-0.5" style={{ transform: formData.is_enrolled ? 'translateX(16px)' : 'translateX(0)' }} />
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold" style={{ color: '#1e293b' }}>Inscrit (seuil de scolarité atteint)</p>
+                <p className="text-[10px]" style={{ color: '#94a3b8' }}>
+                  Active le badge "Inscrit" et autorise l'inscription en classe. Normalement recalculé automatiquement
+                  depuis les paiements — ne modifier manuellement qu'en cas de correction exceptionnelle.
+                </p>
+              </div>
+            </label>
+          )}
 
           <ModalFooter onCancel={() => setShowModal(false)} submitLabel={editingStudent ? 'Mettre à jour' : 'Créer'} color={COLOR} />
         </form>
