@@ -545,14 +545,12 @@ function ExamDetailView({ exam: examProp, onBack }) {
 }
 
 // ─── Exams Grid ────────────────────────────────────────────────────────────────
+// Trust the backend's own is_available() (models.py SecureExam.is_available) —
+// it's computed against the server's timezone.now(), so re-deriving it here
+// from raw start_date/end_date strings against the browser's clock could
+// disagree with the server the API will actually enforce on start-session.
 function isExamAvailable(e) {
-  if (!e.is_published) return false;
-  const now = new Date();
-  const start = e.start_date ? new Date(e.start_date) : null;
-  const end   = e.end_date   ? new Date(e.end_date)   : null;
-  if (start && now < start) return false;
-  if (end   && now > end)   return false;
-  return true;
+  return !!e.is_available;
 }
 
 export default function StudentExamsHub() {

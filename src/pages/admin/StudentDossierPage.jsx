@@ -546,6 +546,7 @@ function InfoSection({ student, studentId, onUpdated }) {
 
   const openEdit = () => {
     setForm({
+      matricule:                  student.matricule                    || '',
       first_name:                 student.user?.first_name             || '',
       last_name:                  student.user?.last_name              || '',
       email:                      student.user?.email                  || '',
@@ -603,6 +604,7 @@ function InfoSection({ student, studentId, onUpdated }) {
     setSaving(true);
     try {
       const payload = {
+        matricule:  form.matricule,
         user_data: { first_name: form.first_name, last_name: form.last_name, email: form.email, phone: form.phone },
         gender:     form.gender,
         birth_date: form.birth_date || null,
@@ -744,6 +746,11 @@ function InfoSection({ student, studentId, onUpdated }) {
 
                 <div className="border-t" style={{ borderColor: '#f1f5f9' }} />
                 <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: C.color }}>Identité</p>
+
+                <div>
+                  <label className="form-label">Matricule</label>
+                  <input className="input-field font-mono" value={form.matricule} onChange={e => setF('matricule', e.target.value)} />
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
