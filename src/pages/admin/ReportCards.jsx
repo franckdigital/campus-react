@@ -256,10 +256,10 @@ export default function ReportCards() {
     [searchTerm, filterYear, filterSemester, filterClass, filterStatus, selectedSite], true
   );
 
-  const { data: classesData }       = useApi(() => academicService.getClasses(siteFilter),       [selectedSite], true);
-  const { data: semestersData }     = useApi(() => academicService.getSemesters(siteFilter),     [selectedSite], true);
-  const { data: academicYearsData } = useApi(() => academicService.getAcademicYears(siteFilter), [selectedSite], true);
-  const { data: studentsData }      = useApi(() => studentsService.getAll({ status: 'ACTIVE', ...siteFilter }), [selectedSite], true);
+  const { data: classesData }       = useApi(() => academicService.getClasses({ ...siteFilter, page_size: 500 }),       [selectedSite], true);
+  const { data: semestersData }     = useApi(() => academicService.getSemesters({ ...siteFilter, page_size: 500 }),     [selectedSite], true);
+  const { data: academicYearsData } = useApi(() => academicService.getAcademicYears({ ...siteFilter, page_size: 500 }), [selectedSite], true);
+  const { data: studentsData }      = useApi(() => studentsService.getAll({ status: 'ACTIVE', ...siteFilter, page_size: 1000 }), [selectedSite], true);
 
   const cards         = cardsData?.results         || cardsData         || [];
   const classes       = classesData?.results       || classesData       || [];

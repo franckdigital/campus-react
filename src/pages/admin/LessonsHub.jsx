@@ -63,9 +63,9 @@ export default function LessonsHub({ classesList: classesListProp, subjectsList:
   // A caller (e.g. the teacher-facing wrapper) can pass a pre-scoped
   // classes/subjects list — otherwise fetch the full school-wide lists, as
   // before, for admin use.
-  const { data: classesData } = useApi(() => academicService.getClasses({ is_active: true }), [], !classesListProp);
+  const { data: classesData } = useApi(() => academicService.getClasses({ is_active: true, page_size: 500 }), [], !classesListProp);
   const classesList = classesListProp || classesData?.results || classesData || [];
-  const { data: subjectsData } = useApi(() => academicService.getSubjects(), [], !subjectsListProp);
+  const { data: subjectsData } = useApi(() => academicService.getSubjects({ page_size: 500 }), [], !subjectsListProp);
   const subjectsList = subjectsListProp || subjectsData?.results || subjectsData || [];
 
   const params = {

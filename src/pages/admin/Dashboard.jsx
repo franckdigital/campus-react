@@ -127,9 +127,13 @@ export default function Dashboard() {
   const { from: dateFrom, to: dateTo } = getPeriodDates(period, selectedYear);
 
   // Totals — not period-filtered (headcounts don't change by week/month)
-  const { data: studentsData }        = useApi(() => studentsService.getAll({ status: 'ACTIVE', ...siteFilter }), [selectedSite, refreshKey], true);
-  const { data: teachersData }        = useApi(() => teachersService.getAll({ ...siteFilter }), [selectedSite, refreshKey], true);
-  const { data: coursesData }         = useApi(() => academicService.getSubjects({ ...siteFilter }), [selectedSite, refreshKey], true);
+  // page_size explicit — these KPI tiles count via results.length (not the
+  // API's .count total), so without it the default page size (20) made the
+  // dashboard silently understate totals once a school had more than 20
+  // active students/teachers/matières.
+  const { data: studentsData }        = useApi(() => studentsService.getAll({ status: 'ACTIVE', ...siteFilter, page_size: 1000 }), [selectedSite, refreshKey], true);
+  const { data: teachersData }        = useApi(() => teachersService.getAll({ ...siteFilter, page_size: 1000 }), [selectedSite, refreshKey], true);
+  const { data: coursesData }         = useApi(() => academicService.getSubjects({ ...siteFilter, page_size: 500 }), [selectedSite, refreshKey], true);
 
   // Period-sensitive: fetch all then filter client-side (endpoints lack date filters)
   const { data: paymentsData }        = useApi(() => financeService.getPayments({ status: 'SUCCESS', ...siteFilter }), [selectedSite, refreshKey], true);

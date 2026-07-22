@@ -345,7 +345,7 @@ function TabNotes({ studentId }) {
     () => gradesService.getGrades({ student: studentId, ...(semesterFilter && { semester: semesterFilter }) }),
     [studentId, semesterFilter], true
   );
-  const { data: semesters } = useApi(() => academicService.getSemesters(), [], true);
+  const { data: semesters } = useApi(() => academicService.getSemesters({ page_size: 500 }), [], true);
   const semestersList = semesters?.results || semesters || [];
   const gradesList = grades?.results || grades || [];
 
@@ -436,8 +436,8 @@ function TabBulletins({ studentId }) {
     () => gradesService.getReportCards({ student: studentId, is_published: true, ...(semesterFilter && { semester: semesterFilter }) }),
     [studentId, semesterFilter], true
   );
-  const { data: semesters } = useApi(() => academicService.getSemesters(), [], true);
-  const { data: academicYears } = useApi(() => academicService.getAcademicYears?.() || Promise.resolve([]), [], true);
+  const { data: semesters } = useApi(() => academicService.getSemesters({ page_size: 500 }), [], true);
+  const { data: academicYears } = useApi(() => academicService.getAcademicYears?.({ page_size: 500 }) || Promise.resolve([]), [], true);
 
   const semestersList = semesters?.results || semesters || [];
   const yearsList = academicYears?.results || academicYears || [];

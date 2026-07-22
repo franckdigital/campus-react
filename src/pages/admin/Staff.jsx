@@ -475,9 +475,9 @@ export default function Staff() {
 
   /* ── data ── */
   const { data: staffData, loading: lstaff, execute: reloadStaff } =
-    useApi(() => staffService.getStaff({ is_active: true }), [], true);
-  const { data: academicYearsData } = useApi(() => academicService.getAcademicYears(), [], true);
-  const { data: sitesData }         = useApi(() => sitesService.getSites(), [], true);
+    useApi(() => staffService.getStaff({ is_active: true, page_size: 500 }), [], true);
+  const { data: academicYearsData } = useApi(() => academicService.getAcademicYears({ page_size: 500 }), [], true);
+  const { data: sitesData }         = useApi(() => sitesService.getSites({ page_size: 500 }), [], true);
 
   const staffList    = list(staffData);
   const academicYears = list(academicYearsData);

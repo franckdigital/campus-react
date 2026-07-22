@@ -591,15 +591,15 @@ export default function Teachers() {
 
   /* ── data ── */
   const { data: teachersData, loading: ltch, execute: reloadTeachers } =
-    useApi(() => academicService.getTeachers({ is_active: true }), [], true);
+    useApi(() => academicService.getTeachers({ is_active: true, page_size: 500 }), [], true);
   const { data: loadData, loading: lloading, execute: reloadLoad } =
     useApi(() => academicService.getTeacherLoad(), [], true);
-  const { data: classesData } = useApi(() => academicService.getClasses(), [], true);
-  const { data: subjectsData } = useApi(() => academicService.getSubjects(), [], true);
-  const { data: academicYearsData } = useApi(() => academicService.getAcademicYears(), [], true);
-  const { data: sitesData }         = useApi(() => sitesService.getSites(), [], true);
+  const { data: classesData } = useApi(() => academicService.getClasses({ page_size: 500 }), [], true);
+  const { data: subjectsData } = useApi(() => academicService.getSubjects({ page_size: 500 }), [], true);
+  const { data: academicYearsData } = useApi(() => academicService.getAcademicYears({ page_size: 500 }), [], true);
+  const { data: sitesData }         = useApi(() => sitesService.getSites({ page_size: 500 }), [], true);
   const { data: assignmentsData, execute: reloadAssignments } =
-    useApi(() => academicService.getClassSubjectTeachers({ is_active: true }), [], true);
+    useApi(() => academicService.getClassSubjectTeachers({ is_active: true, page_size: 500 }), [], true);
 
   const teachers      = list(teachersData);
   const loadList      = list(loadData);
@@ -691,7 +691,7 @@ export default function Teachers() {
       const savedId = editing ? editing.id : null;
       if (!editing && formExps.length > 0) {
         // Need the created teacher id — refetch to get it
-        const updated = await academicService.getTeachers({ is_active: true });
+        const updated = await academicService.getTeachers({ is_active: true, page_size: 500 });
         const all = Array.isArray(updated) ? updated : (updated?.results || []);
         const created = all.find(t => t.employee_id === form.employee_id);
         if (created) {

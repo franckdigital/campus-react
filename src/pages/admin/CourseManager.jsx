@@ -477,10 +477,10 @@ export default function CourseManager({ initialCourse, onCourseOpened, onSaved, 
   // teacher-facing wrapper, via useTeacherClassSubjects()) can pass it in;
   // otherwise fetch the full admin-wide lists here.
   const { data: allClassesData } = useApi(
-    () => academicService.getClasses(), [], classesListProp === undefined
+    () => academicService.getClasses({ page_size: 500 }), [], classesListProp === undefined
   );
   const { data: allSubjectsData } = useApi(
-    () => academicService.getSubjects(), [], subjectsListProp === undefined
+    () => academicService.getSubjects({ page_size: 500 }), [], subjectsListProp === undefined
   );
   const classesList  = classesListProp  !== undefined ? classesListProp  : (allClassesData?.results  || allClassesData  || []);
   const subjectsList = subjectsListProp !== undefined ? subjectsListProp : (allSubjectsData?.results || allSubjectsData || []);

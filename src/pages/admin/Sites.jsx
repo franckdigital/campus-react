@@ -235,7 +235,7 @@ export default function SitesPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
-  const { data: sites, loading: sitesLoading, execute: fetchSites } = useApi(() => sitesService.getSites(), [], true);
+  const { data: sites, loading: sitesLoading, execute: fetchSites } = useApi(() => sitesService.getSites({ page_size: 500 }), [], true);
   const sitesList = sites?.results || sites || [];
 
   const handleSaved = () => {

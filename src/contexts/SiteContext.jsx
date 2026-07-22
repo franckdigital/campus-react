@@ -25,7 +25,7 @@ export const SiteProvider = ({ children }) => {
   const fetchSites = async () => {
     setLoading(true);
     try {
-      const response = await sitesService.getSites({ is_active: true });
+      const response = await sitesService.getSites({ is_active: true, page_size: 500 });
       const sitesList = response?.results || response || [];
       setSites(sitesList);
       

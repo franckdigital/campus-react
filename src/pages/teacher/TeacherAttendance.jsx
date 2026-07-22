@@ -62,7 +62,7 @@ export default function TeacherAttendance() {
       .catch(() => setAttSessionId(null));
   }, [selectedSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { data: classesData } = useApi(() => academicService.getClasses({}), [], true);
+  const { data: classesData } = useApi(() => academicService.getClasses({ page_size: 500 }), [], true);
   const { data: sessionsData } = useApi(
     () => selectedClass ? academicService.getSessions({ class_id: selectedClass }) : Promise.resolve([]),
     [selectedClass], !!selectedClass

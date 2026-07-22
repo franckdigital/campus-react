@@ -858,9 +858,9 @@ function ManageEvaluationsView() {
   const { data: quizzesData, loading } = useApi(() => elearningService.getQuizzes({ page_size: 100 }), [], true);
   const quizzes = quizzesData?.results ?? quizzesData ?? [];
 
-  const { data: classesData } = useApi(() => academicService.getClasses({ is_active: true }), [], true);
+  const { data: classesData } = useApi(() => academicService.getClasses({ is_active: true, page_size: 500 }), [], true);
   const classesList = classesData?.results || classesData || [];
-  const { data: subjectsData } = useApi(() => academicService.getSubjects(), [], true);
+  const { data: subjectsData } = useApi(() => academicService.getSubjects({ page_size: 500 }), [], true);
   const subjectsList = subjectsData?.results || subjectsData || [];
   const { data: lessonsData } = useApi(() => elearningService.getLessons({ is_active: true, page_size: 200 }), [], true);
   const lessons = lessonsData?.results || lessonsData || [];
@@ -1012,9 +1012,9 @@ function Sidebar({ activeTab, setActiveTab, collapsed, setCollapsed }) {
 function ContentArea({ activeTab, setActiveTab, editingCourse, setEditingCourse }) {
   const { notify } = useNotifications();
 
-  const { data: classesData } = useApi(() => academicService.getClasses({ is_active: true }), [], true);
+  const { data: classesData } = useApi(() => academicService.getClasses({ is_active: true, page_size: 500 }), [], true);
   const classesList = classesData?.results || classesData || [];
-  const { data: subjectsData } = useApi(() => academicService.getSubjects(), [], true);
+  const { data: subjectsData } = useApi(() => academicService.getSubjects({ page_size: 500 }), [], true);
   const subjectsList = subjectsData?.results || subjectsData || [];
   const { data: lessonsData } = useApi(() => elearningService.getLessons({ is_active: true, page_size: 200 }), [], true);
   const lessonsList = lessonsData?.results || lessonsData || [];

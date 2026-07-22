@@ -427,10 +427,10 @@ export default function ELearning() {
   const [zoomFormData, setZoomFormData] = useState({ session: '', topic: '', start_time: '', duration: 60, meeting_id: '', join_url: '', password: '', lesson: '' });
 
   const siteFilter = selectedSite !== 'all' ? { site: selectedSite } : {};
-  const { data: classesData } = useApi(() => academicService.getClasses({ is_active: true, ...siteFilter }), [selectedSite], true);
+  const { data: classesData } = useApi(() => academicService.getClasses({ is_active: true, ...siteFilter, page_size: 500 }), [selectedSite], true);
   const classesList = classesData?.results || classesData || [];
 
-  const { data: subjectsData } = useApi(() => academicService.getSubjects(), [], true);
+  const { data: subjectsData } = useApi(() => academicService.getSubjects({ page_size: 500 }), [], true);
   const subjectsList = subjectsData?.results || subjectsData || [];
 
   const { data: sessionsData } = useApi(() => academicService.getSessions({ is_active: true, ...siteFilter }), [selectedSite], true);

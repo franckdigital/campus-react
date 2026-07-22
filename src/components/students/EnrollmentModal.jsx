@@ -29,8 +29,8 @@ export default function EnrollmentModal({ student, onClose, onSuccess, isReenrol
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const { data: classes } = useApi(() => academicService.getClasses({ is_active: true }), [], true);
-  const { data: academicYears } = useApi(() => academicService.getAcademicYears?.({ is_active: true }) || Promise.resolve([]), [], true);
+  const { data: classes } = useApi(() => academicService.getClasses({ is_active: true, page_size: 500 }), [], true);
+  const { data: academicYears } = useApi(() => academicService.getAcademicYears?.({ is_active: true, page_size: 500 }) || Promise.resolve([]), [], true);
 
   const classesList = classes?.results || classes || [];
   const yearsList = academicYears?.results || academicYears || [];

@@ -176,7 +176,7 @@ export default function LibraryManager({ subjectsList = [], notify }) {
   const confirm = useConfirm();
 
   const { selectedSite } = useSite();
-  const { data: sitesData } = useApi(() => sitesService.getSites({ is_active: true }), [], true);
+  const { data: sitesData } = useApi(() => sitesService.getSites({ is_active: true, page_size: 500 }), [], true);
   const sitesList = sitesData?.results || sitesData || [];
   const siteFilter = selectedSite !== 'all' ? { site: selectedSite } : {};
 

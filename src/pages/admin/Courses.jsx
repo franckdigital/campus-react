@@ -35,8 +35,8 @@ export default function Courses() {
 
   /* ── data ── */
   const { data: subjectsData, loading, execute: reload } =
-    useApi(() => academicService.getSubjects(), [], true);
-  const { data: levelsData } = useApi(() => academicService.getLevels(), [], true);
+    useApi(() => academicService.getSubjects({ page_size: 500 }), [], true);
+  const { data: levelsData } = useApi(() => academicService.getLevels({ page_size: 500 }), [], true);
 
   const subjects = list(subjectsData);
   const levels   = list(levelsData);
