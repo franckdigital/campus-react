@@ -22,6 +22,12 @@ export const academicService = {
   updateLevel: (id, data) => api.patch(`/levels/${id}/`, data),
   deleteLevel: (id) => api.delete(`/levels/${id}/`),
 
+  // ── Cycles (cross-filière grouping, ex: "Licence 3") ───────────
+  getCycles: (params = {}) => api.get(`/cycles/${q(params)}`),
+  createCycle: (data) => api.post('/cycles/', data),
+  updateCycle: (id, data) => api.patch(`/cycles/${id}/`, data),
+  deleteCycle: (id) => api.delete(`/cycles/${id}/`),
+
   // ── Classes ───────────────────────────────────────────────────
   getClasses: (params = {}) => api.get(`/classes/${q(params)}`),
   getClassById: (id) => api.get(`/classes/${id}/`),

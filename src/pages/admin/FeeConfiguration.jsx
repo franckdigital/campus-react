@@ -33,14 +33,6 @@ const CATEGORIES = [
   { value: 'SCOLARITE',   label: 'Scolarité' },
 ];
 
-// Kept in sync with academic.Level.CYCLE_CHOICES / finance.FeeConfiguration.CYCLE_CHOICES (backend).
-const CYCLES = [
-  { value: 'L1', label: 'Licence 1' }, { value: 'L2', label: 'Licence 2' }, { value: 'L3', label: 'Licence 3' },
-  { value: 'BTS1', label: 'BTS 1' }, { value: 'BTS2', label: 'BTS 2' },
-  { value: 'DUT1', label: 'DUT 1' }, { value: 'DUT2', label: 'DUT 2' },
-  { value: 'M1', label: 'Master 1' }, { value: 'M2', label: 'Master 2' },
-];
-
 const emptyForm = {
   site: '',
   program: '',
@@ -82,7 +74,7 @@ function ConfirmModal({ message, onConfirm, onCancel }) {
   );
 }
 
-function FeeModal({ editing, defaultSite, sites, programs, levels, academicYears, onClose, onSaved }) {
+function FeeModal({ editing, defaultSite, sites, programs, levels, cycles, academicYears, onClose, onSaved }) {
   const { notify } = useNotifications();
   const [form, setForm] = useState(editing ? {
     site: editing.site ?? '',
@@ -223,8 +215,13 @@ function FeeModal({ editing, defaultSite, sites, programs, levels, academicYears
                 <label className="block text-xs font-bold mb-1.5 text-slate-500">Cycle</label>
                 <select className="input-field" value={form.cycle} onChange={e => set('cycle', e.target.value)}>
                   <option value="">Sélectionner un cycle…</option>
-                  {CYCLES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  {cycles.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
+                {cycles.length === 0 && (
+                  <p className="text-[11px] mt-1 text-amber-600">
+                    Aucun cycle créé — ajoutez-en un dans "Filières, Niveaux &amp; Classes" → onglet Cycles.
+                  </p>
+                )}
               </div>
             ) : (
               <>
@@ -512,6 +509,7 @@ export default function FeeConfigurationPage() {
   const { data: levelsData }  = useApi(() => academicService.getLevels({ is_active: true, page_size: 100 }), [], true);
   const { data: programsData }= useApi(() => academicService.getPrograms({ is_active: true, page_size: 100 }), [], true);
   const { data: yearsData }   = useApi(() => academicService.getAcademicYears({ page_size: 50 }), [], true);
+  const { data: cyclesData }  = useApi(() => academicService.getCycles({ is_active: true, page_size: 100 }), [], true);
 
   // Deduplicate by name (same name can appear with different IDs per program/site)
   const dedupByName = (arr) => {
@@ -524,6 +522,7 @@ export default function FeeConfigurationPage() {
   const levels   = dedupByName(levelsData?.results   || levelsData);
   const programs = dedupByName(programsData?.results || programsData);
   const years    = dedupByName(yearsData?.results    || yearsData);
+  const cycles   = cyclesData?.results   || cyclesData   || [];
 
   const handleDelete = async () => {
     try {
@@ -697,6 +696,7 @@ export default function FeeConfigurationPage() {
           sites={sites}
           programs={programs}
           levels={levels}
+          cycles={cycles}
           academicYears={years}
           onClose={() => { setShowModal(false); setEditItem(null); }}
           onSaved={() => {
