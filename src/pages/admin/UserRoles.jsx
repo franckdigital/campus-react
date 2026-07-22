@@ -11,6 +11,7 @@ import { useApi } from '../../hooks/useApi';
 import { PageHeader, FilterBar, SearchInput, FilterSelect, PrimaryButton, IconBtn, Pagination } from '../../components/ui/PageHeader';
 import BackToParametres from '../../components/ui/BackToParametres';
 import { useConfirm } from '../../components/ConfirmDialog';
+import { useNotifications } from '../../components/Notifications';
 import { MATRIX_LS, PERMISSION_GROUPS, MATRIX_ROLES, buildDefaultMatrix, loadMatrix } from '../../utils/permissionMatrix';
 
 const COLOR    = '#7c3aed';
@@ -142,6 +143,14 @@ function FooterBtns({ onCancel, submitLabel, loading, color = COLOR }) {
 // ══════════════════════════════════════════════════════════════════════════════
 export default function UserRoles() {
   const confirm = useConfirm();
+  // Native window.alert() is unreliable here: Chrome silently suppresses
+  // ALL further alert()/confirm() calls on a page once the user has
+  // dismissed a few in a row (the "Prevent this page from creating
+  // additional dialogs" behavior) — exactly what made a real backend error
+  // (ex: deletion refused because of linked invoices) look like "rien ne se
+  // passe" with no visible feedback at all. This in-app toast can't be
+  // silently blocked that way.
+  const { notify } = useNotifications();
   const [activeTab, setActiveTab] = useState('matrix');
 
   // ── Pagination ────────────────────────────────────────────────────────────
@@ -277,7 +286,7 @@ export default function UserRoles() {
     try {
       await usersService.update(user.id, { is_active: !user.is_active });
       refetchUsers();
-    } catch { alert('Erreur'); }
+    } catch { notify({ type: 'error', title: 'Erreur', message: 'Erreur lors de la mise à jour' }); }
   }
 
   async function handleDeactivateUser(user) {
@@ -295,8 +304,9 @@ export default function UserRoles() {
     if (!ok) return;
     try {
       await usersService.update(user.id, { is_active: false });
+      notify({ type: 'success', title: 'Compte désactivé', message: `${user.first_name} ${user.last_name} a été désactivé.` });
       refetchUsers();
-    } catch { alert('Erreur'); }
+    } catch { notify({ type: 'error', title: 'Erreur', message: 'Erreur lors de la désactivation' }); }
   }
 
   // Permanent deletion — the backend cascades to the linked Student/Teacher/
@@ -315,9 +325,14 @@ export default function UserRoles() {
     if (!ok) return;
     try {
       await usersService.delete(user.id);
+      notify({ type: 'success', title: 'Compte supprimé', message: `${user.first_name} ${user.last_name} a été supprimé définitivement.` });
       refetchUsers();
     } catch (err) {
-      alert(err?.response?.data?.detail || err?.message || 'Erreur lors de la suppression');
+      notify({
+        type: 'error',
+        title: 'Suppression impossible',
+        message: err?.response?.data?.detail || err?.message || 'Erreur lors de la suppression',
+      });
     }
   }
 
@@ -351,7 +366,10 @@ export default function UserRoles() {
   }
 
   async function handleDeleteRole(role) {
-    if (role.is_system) { alert('Impossible de supprimer un rôle système'); return; }
+    if (role.is_system) {
+      notify({ type: 'error', title: 'Erreur', message: 'Impossible de supprimer un rôle système' });
+      return;
+    }
     const ok = await confirm({
       title: 'Supprimer ce rôle ?',
       message: `Le rôle "${role.name}" sera supprimé — les utilisateurs qui l'avaient ne l'auront plus.`,
@@ -359,7 +377,11 @@ export default function UserRoles() {
       destructive: true,
     });
     if (!ok) return;
-    try { await usersService.deleteRole(role.id); refetchRoles(); } catch { alert('Erreur'); }
+    try {
+      await usersService.deleteRole(role.id);
+      notify({ type: 'success', title: 'Rôle supprimé', message: '' });
+      refetchRoles();
+    } catch { notify({ type: 'error', title: 'Erreur', message: 'Erreur lors de la suppression' }); }
   }
 
   // ── User Form ─────────────────────────────────────────────────────────────
@@ -392,7 +414,7 @@ export default function UserRoles() {
       setUserModal(false); refetchUsers();
     } catch (err) {
       const data = err?.response?.data || {};
-      alert(Object.values(data).flat().join('\n') || 'Erreur lors de l\'enregistrement');
+      notify({ type: 'error', title: 'Erreur', message: Object.values(data).flat().join('\n') || 'Erreur lors de l\'enregistrement' });
     } finally { setSaving(false); }
   }
 
@@ -421,7 +443,7 @@ export default function UserRoles() {
       if (editingRole) await usersService.updateRole(editingRole.id, roleForm);
       else             await usersService.createRole(roleForm);
       setRoleModal(false); refetchRoles();
-    } catch { alert('Erreur'); } finally { setSaving(false); }
+    } catch { notify({ type: 'error', title: 'Erreur', message: 'Erreur lors de l\'enregistrement' }); } finally { setSaving(false); }
   }
 
   // ── Permission Form ───────────────────────────────────────────────────────
@@ -434,7 +456,7 @@ export default function UserRoles() {
     try {
       await usersService.createPermission(permForm);
       setPermModal(false); setPermForm(emptyPerm); refetchPerms();
-    } catch { alert('Erreur'); } finally { setSaving(false); }
+    } catch { notify({ type: 'error', title: 'Erreur', message: 'Erreur lors de l\'enregistrement' }); } finally { setSaving(false); }
   }
 
   // ── Assign Role ───────────────────────────────────────────────────────────
@@ -446,7 +468,7 @@ export default function UserRoles() {
       await usersService.assignRole(assignModal, assignRoleId, assignSiteId || undefined);
       setAssignModal(null); setAssignRoleId(''); setAssignSiteId('');
       refetchUsers();
-    } catch { alert('Erreur'); } finally { setSaving(false); }
+    } catch { notify({ type: 'error', title: 'Erreur', message: 'Erreur lors de l\'assignation' }); } finally { setSaving(false); }
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
