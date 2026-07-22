@@ -15,6 +15,14 @@ import {
   Pagination, Avatar,
 } from '../ui/PageHeader';
 
+// Kept in sync with academic.Level.CYCLE_CHOICES / finance.FeeConfiguration.CYCLE_CHOICES (backend).
+const CYCLES = [
+  { value: 'L1', label: 'Licence 1' }, { value: 'L2', label: 'Licence 2' }, { value: 'L3', label: 'Licence 3' },
+  { value: 'BTS1', label: 'BTS 1' }, { value: 'BTS2', label: 'BTS 2' },
+  { value: 'DUT1', label: 'DUT 1' }, { value: 'DUT2', label: 'DUT 2' },
+  { value: 'M1', label: 'Master 1' }, { value: 'M2', label: 'Master 2' },
+];
+
 /* ── colour tokens ──────────────────────────────────────────── */
 const C = {
   program : { accent: '#6366f1', bg: '#eef2ff', icon: '#c7d2fe' },
@@ -163,7 +171,7 @@ export default function PedagogicalManager({ showHeader = true }) {
   const pf = k => ({ value: pForm[k], onChange: e => setPForm(p => ({ ...p, [k]: e.target.value })) });
 
   /* level form */
-  const emptyLevel = { name: '', code: '', order: 1, program: '' };
+  const emptyLevel = { name: '', code: '', order: 1, program: '', cycle: '' };
   const [lForm, setLForm] = useState(emptyLevel);
   const lf = k => ({ value: lForm[k], onChange: e => setLForm(p => ({ ...p, [k]: e.target.value })) });
 
@@ -203,7 +211,7 @@ export default function PedagogicalManager({ showHeader = true }) {
   }
   function openLevel(item = null) {
     setEditing(item);
-    setLForm(item ? { name: item.name, code: item.code, order: item.order, program: item.program } : emptyLevel);
+    setLForm(item ? { name: item.name, code: item.code, order: item.order, program: item.program, cycle: item.cycle || '' } : emptyLevel);
     setModal('level');
   }
   function openClass(item = null) {
@@ -793,6 +801,16 @@ export default function PedagogicalManager({ showHeader = true }) {
             </FormField>
             <FormField label="Ordre d'affichage">
               <FormInput type="number" {...lf('order')} min="1" />
+            </FormField>
+            <FormField label="Cycle" fullWidth>
+              <FormSelect {...lf('cycle')}>
+                <option value="">Aucun (pas de barème par cycle)</option>
+                {CYCLES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </FormSelect>
+              <p className="text-[11px] mt-1" style={{ color: '#94a3b8' }}>
+                Regroupe ce niveau avec les mêmes niveaux des autres filières (ex: tous les "Licence 3")
+                pour pouvoir leur appliquer un seul barème commun dans "Barème des frais".
+              </p>
             </FormField>
           </FormSection>
           <ModalFooter onCancel={() => setModal(null)} submitLabel={editing ? 'Mettre à jour' : 'Créer'} loading={saving} color={C.level.accent} />

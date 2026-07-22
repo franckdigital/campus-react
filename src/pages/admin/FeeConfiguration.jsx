@@ -33,10 +33,19 @@ const CATEGORIES = [
   { value: 'SCOLARITE',   label: 'Scolarité' },
 ];
 
+// Kept in sync with academic.Level.CYCLE_CHOICES / finance.FeeConfiguration.CYCLE_CHOICES (backend).
+const CYCLES = [
+  { value: 'L1', label: 'Licence 1' }, { value: 'L2', label: 'Licence 2' }, { value: 'L3', label: 'Licence 3' },
+  { value: 'BTS1', label: 'BTS 1' }, { value: 'BTS2', label: 'BTS 2' },
+  { value: 'DUT1', label: 'DUT 1' }, { value: 'DUT2', label: 'DUT 2' },
+  { value: 'M1', label: 'Master 1' }, { value: 'M2', label: 'Master 2' },
+];
+
 const emptyForm = {
   site: '',
   program: '',
   level: '',
+  cycle: '',
   academic_year: '',
   modality: '',
   affectation_status: '',
@@ -79,6 +88,7 @@ function FeeModal({ editing, defaultSite, sites, programs, levels, academicYears
     site: editing.site ?? '',
     program: editing.program ?? '',
     level: editing.level ?? '',
+    cycle: editing.cycle ?? '',
     academic_year: editing.academic_year ?? '',
     modality: editing.modality ?? '',
     affectation_status: editing.affectation_status ?? '',
@@ -86,6 +96,12 @@ function FeeModal({ editing, defaultSite, sites, programs, levels, academicYears
     label: editing.label ?? '',
     is_active: editing.is_active ?? true,
   } : { ...emptyForm, site: defaultSite || '' });
+  // "Niveau précis" scopes the barème to one filière's level (as before);
+  // "Cycle entier" scopes it to every filière's level sharing the same
+  // cycle (ex: tous les "Licence 3") — mutually exclusive in the UI, even
+  // though the DB only enforces it by convention (see FeeConfiguration.cycle
+  // comment). Existing cycle-scoped barèmes reopen in cycle mode.
+  const [scope, setScope] = useState(editing?.cycle ? 'cycle' : 'level');
   const [saving, setSaving] = useState(false);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -96,8 +112,9 @@ function FeeModal({ editing, defaultSite, sites, programs, levels, academicYears
     try {
       const payload = {
         site: form.site || null,
-        program: form.program || null,
-        level: form.level || null,
+        program: scope === 'level' ? (form.program || null) : null,
+        level: scope === 'level' ? (form.level || null) : null,
+        cycle: scope === 'cycle' ? (form.cycle || null) : null,
         academic_year: form.academic_year || null,
         modality: form.modality || null,
         affectation_status: form.affectation_status || null,
@@ -156,6 +173,33 @@ function FeeModal({ editing, defaultSite, sites, programs, levels, academicYears
               value={form.label} onChange={e => set('label', e.target.value)} />
           </div>
 
+          {/* Portée : un niveau précis (une filière) ou un cycle entier (toutes les filières) */}
+          <div>
+            <label className="block text-xs font-bold mb-1.5 text-slate-500">Portée</label>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setScope('level')}
+                className="flex-1 py-2 rounded-xl text-xs font-bold border transition-colors"
+                style={scope === 'level'
+                  ? { background: COLOR, color: '#fff', borderColor: COLOR }
+                  : { background: '#fff', color: '#64748b', borderColor: '#e2e8f0' }}>
+                Niveau précis (une filière)
+              </button>
+              <button type="button" onClick={() => setScope('cycle')}
+                className="flex-1 py-2 rounded-xl text-xs font-bold border transition-colors"
+                style={scope === 'cycle'
+                  ? { background: COLOR, color: '#fff', borderColor: COLOR }
+                  : { background: '#fff', color: '#64748b', borderColor: '#e2e8f0' }}>
+                Cycle entier (toutes filières)
+              </button>
+            </div>
+            {scope === 'cycle' && (
+              <p className="text-[11px] mt-1.5 text-slate-400">
+                S'applique à tous les niveaux (de toutes les filières) marqués avec ce cycle
+                dans "Filières, Niveaux &amp; Classes".
+              </p>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Site */}
             <div>
@@ -173,22 +217,35 @@ function FeeModal({ editing, defaultSite, sites, programs, levels, academicYears
                 {academicYears.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}
               </select>
             </div>
-            {/* Niveau */}
-            <div>
-              <label className="block text-xs font-bold mb-1.5 text-slate-500">Niveau</label>
-              <select className="input-field" value={form.level} onChange={e => set('level', e.target.value)}>
-                <option value="">Tous les niveaux</option>
-                {levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </select>
-            </div>
-            {/* Filière */}
-            <div>
-              <label className="block text-xs font-bold mb-1.5 text-slate-500">Filière / Programme</label>
-              <select className="input-field" value={form.program} onChange={e => set('program', e.target.value)}>
-                <option value="">Tous les programmes</option>
-                {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
+            {scope === 'cycle' ? (
+              /* Cycle */
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold mb-1.5 text-slate-500">Cycle</label>
+                <select className="input-field" value={form.cycle} onChange={e => set('cycle', e.target.value)}>
+                  <option value="">Sélectionner un cycle…</option>
+                  {CYCLES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+              </div>
+            ) : (
+              <>
+                {/* Niveau */}
+                <div>
+                  <label className="block text-xs font-bold mb-1.5 text-slate-500">Niveau</label>
+                  <select className="input-field" value={form.level} onChange={e => set('level', e.target.value)}>
+                    <option value="">Tous les niveaux</option>
+                    {levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </select>
+                </div>
+                {/* Filière */}
+                <div>
+                  <label className="block text-xs font-bold mb-1.5 text-slate-500">Filière / Programme</label>
+                  <select className="input-field" value={form.program} onChange={e => set('program', e.target.value)}>
+                    <option value="">Tous les programmes</option>
+                    {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+              </>
+            )}
             {/* Modalité */}
             <div>
               <label className="block text-xs font-bold mb-1.5 text-slate-500">Modalité</label>
@@ -583,8 +640,8 @@ export default function FeeConfigurationPage() {
                 <td className="px-4 py-3">
                   <div className="font-semibold text-slate-800 truncate w-[220px]" title={fee.label || ''}>{fee.label || '—'}</div>
                   <div className="text-xs text-slate-400 mt-0.5 truncate w-[220px]"
-                       title={[fee.site_name, fee.level_name, fee.program_name, fee.modality_name, fee.affectation_status_name, fee.academic_year_name].filter(Boolean).join(' · ')}>
-                    {[fee.site_name, fee.level_name, fee.program_name, fee.modality_name, fee.affectation_status_name, fee.academic_year_name].filter(Boolean).join(' · ') || 'Configuration globale'}
+                       title={[fee.site_name, fee.level_name || (fee.cycle_name && `Cycle : ${fee.cycle_name}`), fee.program_name, fee.modality_name, fee.affectation_status_name, fee.academic_year_name].filter(Boolean).join(' · ')}>
+                    {[fee.site_name, fee.level_name || (fee.cycle_name && `Cycle : ${fee.cycle_name}`), fee.program_name, fee.modality_name, fee.affectation_status_name, fee.academic_year_name].filter(Boolean).join(' · ') || 'Configuration globale'}
                   </div>
                 </td>
                 <td className="px-4 py-3">
@@ -597,7 +654,13 @@ export default function FeeConfigurationPage() {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-slate-600"><div className="truncate w-[140px]" title={fee.site_name || ''}>{fee.site_name || <span className="text-slate-300 italic">Tous</span>}</div></td>
-                <td className="px-4 py-3 text-slate-600"><div className="truncate w-[140px]" title={fee.level_name || ''}>{fee.level_name || <span className="text-slate-300 italic">Tous</span>}</div></td>
+                <td className="px-4 py-3 text-slate-600">
+                  <div className="truncate w-[140px]" title={fee.level_name || fee.cycle_name || ''}>
+                    {fee.level_name || (fee.cycle_name
+                      ? <span className="px-1.5 py-0.5 rounded-md text-[11px] font-bold" style={{ background: '#ecfeff', color: COLOR }}>{fee.cycle_name} (tout.)</span>
+                      : <span className="text-slate-300 italic">Tous</span>)}
+                  </div>
+                </td>
                 <td className="px-4 py-3 text-slate-600"><div className="truncate w-[140px]" title={fee.program_name || ''}>{fee.program_name || <span className="text-slate-300 italic">Tous</span>}</div></td>
                 <td className="px-4 py-3 text-slate-600"><div className="truncate w-[110px]" title={fee.modality_name || ''}>{fee.modality_name || <span className="text-slate-300 italic">Toutes</span>}</div></td>
                 <td className="px-4 py-3 text-slate-600"><div className="truncate w-[110px]" title={fee.affectation_status_name || ''}>{fee.affectation_status_name || <span className="text-slate-300 italic">Toutes</span>}</div></td>
