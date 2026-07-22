@@ -494,14 +494,27 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
         savedExam = await elearningService.createSecureExam(payload);
       }
 
-      // Upload PDF if selected (multipart PATCH with correct field name)
+      // Upload PDF if selected (multipart PATCH with correct field name).
+      // The rest of the exam already saved fine at this point — a failure
+      // here must NOT be swallowed silently, or the admin sees a green
+      // "Examen modifié" toast while the student is left with no PDF at all
+      // and no clue why (see "Format d'examen non configuré" on their side).
+      let pdfError = null;
       if (examPdf && savedExam?.id) {
         const fd = new FormData();
         fd.append('subject_file', examPdf);
-        await elearningService.uploadSecureExamPdf(savedExam.id, fd).catch(() => {});
+        await elearningService.uploadSecureExamPdf(savedExam.id, fd).catch(err => { pdfError = err; });
       }
 
-      notify({ type: 'success', title: editing ? 'Examen modifié' : 'Examen créé', message: '' });
+      if (pdfError) {
+        notify({
+          type: 'error',
+          title: 'Examen enregistré, mais l\'envoi du PDF a échoué',
+          message: pdfError.message || 'Réessayez d\'attacher le fichier depuis l\'onglet Épreuve PDF.',
+        });
+      } else {
+        notify({ type: 'success', title: editing ? 'Examen modifié' : 'Examen créé', message: '' });
+      }
       onSaved();
       onClose();
     } catch (err) {
