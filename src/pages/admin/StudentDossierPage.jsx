@@ -195,6 +195,26 @@ export default function StudentDossierPage() {
     if (studentId) fetchStudent();
   }, [studentId]);
 
+  // The header's Total/Payé/Reste used to come solely from the one-shot
+  // financial-summary fetch above (financialInfo.tuition_*) — if that call
+  // ever failed silently or raced ahead of a barème fix, the header showed
+  // stale/wrong numbers until the admin happened to open the Paiements tab
+  // (whose own PaiementsSection independently derives the same numbers from
+  // real invoices and looked "more correct"). Fetching invoices here too and
+  // computing the same way makes the header agree with Paiements always,
+  // not just after that tab has been visited once.
+  const { data: headerInvoicesData } = useApi(
+    () => financeService.getInvoices({ student: studentId }), [studentId], !!studentId
+  );
+  const headerActiveInvoices = (headerInvoicesData?.results || headerInvoicesData || [])
+    .filter(inv => inv.status !== 'CANCELLED');
+  const headerFallbackTuition = configuredFees?.tuition || parseFloat(student?.tuition_fee || 0);
+  const headerTuitionTotal = headerActiveInvoices.length > 0
+    ? (headerActiveInvoices.reduce((s, inv) => s + parseFloat(inv.total || 0), 0) || headerFallbackTuition)
+    : headerFallbackTuition;
+  const headerTuitionPaid = headerActiveInvoices.reduce((s, inv) => s + parseFloat(inv.amount_paid || 0), 0);
+  const headerTuitionBalance = Math.max(0, headerTuitionTotal - headerTuitionPaid);
+
   const sections = [
     { id: 'info',      label: 'Informations', icon: User,          ...SECTION_COLORS.info },
     { id: 'parents',   label: 'Parents',       icon: Users,         ...SECTION_COLORS.parents },
@@ -356,9 +376,9 @@ export default function StudentDossierPage() {
                 <p className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'rgba(147,197,253,0.9)' }}>Scolarité</p>
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { label: 'Total',  value: financialInfo.tuition_total   ?? configuredFees.tuition, color: 'rgba(255,255,255,0.85)' },
-                    { label: 'Payé',   value: financialInfo.tuition_paid    ?? 0, color: '#86efac' },
-                    { label: 'Reste',  value: financialInfo.tuition_balance ?? configuredFees.tuition, color: (financialInfo.tuition_balance ?? configuredFees.tuition) > 0 ? '#fca5a5' : '#86efac' },
+                    { label: 'Total',  value: headerTuitionTotal,   color: 'rgba(255,255,255,0.85)' },
+                    { label: 'Payé',   value: headerTuitionPaid,    color: '#86efac' },
+                    { label: 'Reste',  value: headerTuitionBalance, color: headerTuitionBalance > 0 ? '#fca5a5' : '#86efac' },
                   ].map((item, i) => (
                     <div key={i} className="rounded-xl px-3 py-2 text-center"
                          style={{ background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.25)' }}>
