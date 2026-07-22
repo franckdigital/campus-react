@@ -1,17 +1,18 @@
 import { useState, useEffect } from 'react';
 import {
   Layers, Plus, Edit, Trash2, BookOpen, GraduationCap,
-  BarChart3, FolderOpen,
+  BarChart3, FolderOpen, Users, UserCheck,
 } from 'lucide-react';
-import { academicService, sitesService } from '../../services';
+import { academicService, sitesService, studentsService } from '../../services';
 import { useApi } from '../../hooks/useApi';
 import { useSite } from '../../contexts/SiteContext';
 import { useConfirm } from '../ConfirmDialog';
 import { useNotifications } from '../Notifications';
+import { generateSiteMatricule } from '../../utils/matriculeGenerator';
 import {
   PageHeader, FilterBar, SearchInput, FilterSelect, PrimaryButton,
   FormSection, FormField, FormInput, FormSelect, ModalFooter, Modal, IconBtn,
-  Pagination,
+  Pagination, Avatar,
 } from '../ui/PageHeader';
 
 /* ── colour tokens ──────────────────────────────────────────── */
@@ -19,6 +20,9 @@ const C = {
   program : { accent: '#6366f1', bg: '#eef2ff', icon: '#c7d2fe' },
   level   : { accent: '#0891b2', bg: '#ecfeff', icon: '#a5f3fc' },
   class   : { accent: '#0d9488', bg: '#f0fdfa', icon: '#99f6e4' },
+  subject : { accent: '#7c3aed', bg: '#f5f3ff', icon: '#ddd6fe' },
+  student : { accent: '#2563eb', bg: '#eff6ff', icon: '#dbeafe' },
+  teacher : { accent: '#059669', bg: '#ecfdf5', icon: '#a7f3d0' },
 };
 
 /* ── small helpers ───────────────────────────────────────────── */
@@ -89,8 +93,12 @@ export default function PedagogicalManager({ showHeader = true }) {
     useApi(() => academicService.getClasses({ ...siteFilter }), [selectedSite], true);
   const { data: sitesData }   = useApi(() => sitesService.getSites({ is_active: true }), [], true);
   const { data: yearsData }   = useApi(() => academicService.getAcademicYears(), [], true);
-  const { data: teachersData } = useApi(() => academicService.getTeachers({ is_active: true }), [], true);
-  const { data: subjectsData } = useApi(() => academicService.getSubjects({ is_active: true }), [], true);
+  const { data: teachersData, execute: reloadTeachers } =
+    useApi(() => academicService.getTeachers({ is_active: true }), [], true);
+  const { data: subjectsData, execute: reloadSubjects } =
+    useApi(() => academicService.getSubjects({ is_active: true }), [], true);
+  const { data: studentsData, execute: reloadStudents } =
+    useApi(() => studentsService.getAll({ ...siteFilter, page_size: 500 }), [selectedSite], true);
 
   const programs = list(programsData);
   const levels   = list(levelsData);
@@ -99,6 +107,7 @@ export default function PedagogicalManager({ showHeader = true }) {
   const years    = list(yearsData);
   const teachers = list(teachersData);
   const subjects = list(subjectsData);
+  const students = list(studentsData);
 
   /* ── search / filters ── */
   const [search, setSearch] = useState('');
@@ -119,8 +128,27 @@ export default function PedagogicalManager({ showHeader = true }) {
     (!filterLevel || c.level === filterLevel) &&
     (c.name.toLowerCase().includes(search.toLowerCase()) || c.code.toLowerCase().includes(search.toLowerCase()))
   );
+  const filtSubjects = subjects.filter(s =>
+    s.name.toLowerCase().includes(search.toLowerCase()) || s.code.toLowerCase().includes(search.toLowerCase())
+  );
+  const filtStudents = students.filter(s =>
+    (s.full_name || '').toLowerCase().includes(search.toLowerCase()) ||
+    (s.matricule || '').toLowerCase().includes(search.toLowerCase()) ||
+    (s.email || '').toLowerCase().includes(search.toLowerCase())
+  );
+  const filtTeachers = teachers.filter(t =>
+    (t.full_name || '').toLowerCase().includes(search.toLowerCase()) ||
+    (t.employee_id || '').toLowerCase().includes(search.toLowerCase()) ||
+    (t.specialization || '').toLowerCase().includes(search.toLowerCase())
+  );
 
-  const current = tab === 'programs' ? filtPrograms : tab === 'levels' ? filtLevels : filtClasses;
+  const current =
+    tab === 'programs' ? filtPrograms :
+    tab === 'levels'   ? filtLevels :
+    tab === 'classes'  ? filtClasses :
+    tab === 'subjects' ? filtSubjects :
+    tab === 'students' ? filtStudents :
+                         filtTeachers;
   const totalPages = Math.ceil(current.length / ITEMS);
   const paginated = current.slice((page - 1) * ITEMS, page * ITEMS);
 
@@ -144,6 +172,29 @@ export default function PedagogicalManager({ showHeader = true }) {
   const [cForm, setCForm] = useState(emptyCls);
   const cf = k => ({ value: cForm[k], onChange: e => setCForm(p => ({ ...p, [k]: e.target.value })) });
 
+  /* subject (matière) form */
+  const emptySubject = { name: '', code: '', description: '', coefficient: '1.00', hours_per_week: '2.00' };
+  const [sjForm, setSjForm] = useState(emptySubject);
+  const sjf = k => ({ value: sjForm[k], onChange: e => setSjForm(p => ({ ...p, [k]: e.target.value })) });
+
+  /* student form */
+  const emptyStudent = {
+    matricule: '', first_name: '', last_name: '', email: '', phone: '',
+    gender: 'M', site: '', class_id: '', status: 'ACTIVE',
+  };
+  const [stForm, setStForm] = useState(emptyStudent);
+  const stf = k => ({ value: stForm[k], onChange: e => setStForm(p => ({ ...p, [k]: e.target.value })) });
+
+  /* teacher form */
+  const emptyTeacher = {
+    first_name: '', last_name: '', email: '', phone: '',
+    employee_id: '', specialization: '', qualification: '',
+    hire_date: '', contract_type: 'PERMANENT', hourly_rate: '',
+    password: '', password_confirm: '', site: '',
+  };
+  const [tForm, setTForm] = useState(emptyTeacher);
+  const tf = k => ({ value: tForm[k], onChange: e => setTForm(p => ({ ...p, [k]: e.target.value })) });
+
   /* open helpers */
   function openProgram(item = null) {
     setEditing(item);
@@ -159,6 +210,54 @@ export default function PedagogicalManager({ showHeader = true }) {
     setEditing(item);
     setCForm(item ? { name: item.name, code: item.code, level: item.level, academic_year: item.academic_year, site: item.site, max_students: item.max_students || 50, main_teacher: item.main_teacher || '' } : emptyCls);
     setModal('class');
+  }
+  function openSubject(item = null) {
+    setEditing(item);
+    setSjForm(item ? {
+      name: item.name, code: item.code, description: item.description || '',
+      coefficient: item.coefficient, hours_per_week: item.hours_per_week,
+    } : emptySubject);
+    setModal('subject');
+  }
+  async function openStudent(item = null) {
+    setEditing(item);
+    if (item) {
+      // The list row (StudentListSerializer) only has full_name, not separate
+      // first/last name — fetch the real detail so saveStudent's user_data
+      // patch doesn't overwrite the student's name with a guessed name split.
+      setModal('student');
+      try {
+        const full = await studentsService.getById(item.id);
+        setStForm({
+          matricule: full.matricule || '', first_name: full.user?.first_name || '',
+          last_name: full.user?.last_name || '',
+          email: full.user?.email || '', phone: full.user?.phone || '',
+          gender: full.gender || 'M', site: full.site || '',
+          class_id: '', status: (full.status || 'ACTIVE').toUpperCase(),
+        });
+      } catch {
+        notify({ type: 'error', title: 'Erreur', message: 'Erreur lors du chargement de l\'étudiant' });
+        setModal(null);
+      }
+    } else {
+      const defaultSite = selectedSite !== 'all' ? selectedSite : (sites[0]?.id || '');
+      const existing = students.map(s => s.matricule).filter(Boolean);
+      const site = sites.find(s => s.id === defaultSite);
+      setStForm({ ...emptyStudent, site: defaultSite, matricule: generateSiteMatricule(site?.code, existing) });
+      setModal('student');
+    }
+  }
+  function openTeacher(item = null) {
+    setEditing(item);
+    setTForm(item ? {
+      first_name: item.user?.first_name || '', last_name: item.user?.last_name || '',
+      email: item.user?.email || '', phone: item.user?.phone || '',
+      employee_id: item.employee_id || '', specialization: item.specialization || '',
+      qualification: item.qualification || '', hire_date: item.hire_date || '',
+      contract_type: item.contract_type || 'PERMANENT', hourly_rate: item.hourly_rate || '',
+      password: '', password_confirm: '', site: '',
+    } : { ...emptyTeacher, site: selectedSite !== 'all' ? selectedSite : '' });
+    setModal('teacher');
   }
 
   /* level ↔ subjects management */
@@ -241,6 +340,74 @@ export default function PedagogicalManager({ showHeader = true }) {
     } catch { notify({ type: 'error', title: 'Erreur', message: 'Erreur lors de la sauvegarde' }); }
     setSaving(false);
   }
+  async function saveSubject(e) {
+    e.preventDefault(); setSaving(true);
+    try {
+      if (editing) await academicService.updateSubject(editing.id, sjForm);
+      else await academicService.createSubject(sjForm);
+      setModal(null); reloadSubjects();
+    } catch { notify({ type: 'error', title: 'Erreur', message: 'Erreur lors de la sauvegarde' }); }
+    setSaving(false);
+  }
+  async function saveStudent(e) {
+    e.preventDefault(); setSaving(true);
+    try {
+      if (editing) {
+        await studentsService.update(editing.id, {
+          matricule: stForm.matricule,
+          gender: stForm.gender,
+          status: stForm.status,
+          user_data: { first_name: stForm.first_name, last_name: stForm.last_name, phone: stForm.phone },
+        });
+      } else {
+        const newStudent = await studentsService.create({
+          user_data: {
+            first_name: stForm.first_name, last_name: stForm.last_name,
+            email: stForm.email, phone: stForm.phone || '',
+            password: 'Campus2026!', password_confirm: 'Campus2026!',
+          },
+          matricule: stForm.matricule, gender: stForm.gender,
+          site: stForm.site, status: stForm.status,
+        });
+        if (newStudent?.id && stForm.class_id) {
+          const currentYear = years.find(y => y.is_current) || years[0];
+          if (currentYear) {
+            await academicService.createEnrollment({
+              student: newStudent.id, class_obj: stForm.class_id,
+              academic_year: currentYear.id, status: 'ENROLLED',
+            }).catch(() => {});
+          }
+        }
+      }
+      setModal(null); reloadStudents(); reloadClasses();
+    } catch (err) { notify({ type: 'error', title: 'Erreur', message: err.message || 'Erreur lors de la sauvegarde' }); }
+    setSaving(false);
+  }
+  async function saveTeacher(e) {
+    e.preventDefault(); setSaving(true);
+    try {
+      const profFields = {
+        employee_id: tForm.employee_id, specialization: tForm.specialization,
+        qualification: tForm.qualification, hire_date: tForm.hire_date,
+        contract_type: tForm.contract_type, hourly_rate: tForm.hourly_rate || null,
+      };
+      if (editing) {
+        await academicService.updateTeacher(editing.id, profFields);
+      } else {
+        await academicService.createTeacher({
+          user_data: {
+            first_name: tForm.first_name, last_name: tForm.last_name,
+            email: tForm.email, phone: tForm.phone, user_type: 'TEACHER',
+            password: tForm.password, password_confirm: tForm.password_confirm,
+          },
+          ...profFields,
+          ...(tForm.site ? { site: tForm.site } : {}),
+        });
+      }
+      setModal(null); reloadTeachers();
+    } catch (err) { notify({ type: 'error', title: 'Erreur', message: err.message || 'Erreur lors de la sauvegarde' }); }
+    setSaving(false);
+  }
 
   const loading = lprog || llev || lcls;
 
@@ -254,7 +421,10 @@ export default function PedagogicalManager({ showHeader = true }) {
           action={
             tab === 'programs' ? <PrimaryButton icon={Plus} label="Nouvelle filière" color={C.program.accent} onClick={() => openProgram()} /> :
             tab === 'levels'   ? <PrimaryButton icon={Plus} label="Nouveau niveau"   color={C.level.accent}   onClick={() => openLevel()} /> :
-                                 <PrimaryButton icon={Plus} label="Nouvelle classe"  color={C.class.accent}   onClick={() => openClass()} />
+            tab === 'classes'  ? <PrimaryButton icon={Plus} label="Nouvelle classe"  color={C.class.accent}   onClick={() => openClass()} /> :
+            tab === 'subjects' ? <PrimaryButton icon={Plus} label="Nouvelle matière" color={C.subject.accent} onClick={() => openSubject()} /> :
+            tab === 'students' ? <PrimaryButton icon={Plus} label="Nouvel étudiant"  color={C.student.accent} onClick={() => openStudent()} /> :
+                                 <PrimaryButton icon={Plus} label="Nouvel enseignant" color={C.teacher.accent} onClick={() => openTeacher()} />
           }
         />
       )}
@@ -263,21 +433,34 @@ export default function PedagogicalManager({ showHeader = true }) {
         <div className="flex items-center justify-end mb-4">
           {tab === 'programs' ? <PrimaryButton icon={Plus} label="Nouvelle filière" color={C.program.accent} onClick={() => openProgram()} /> :
            tab === 'levels'   ? <PrimaryButton icon={Plus} label="Nouveau niveau"   color={C.level.accent}   onClick={() => openLevel()} /> :
-                                <PrimaryButton icon={Plus} label="Nouvelle classe"  color={C.class.accent}   onClick={() => openClass()} />}
+           tab === 'classes'  ? <PrimaryButton icon={Plus} label="Nouvelle classe"  color={C.class.accent}   onClick={() => openClass()} /> :
+           tab === 'subjects' ? <PrimaryButton icon={Plus} label="Nouvelle matière" color={C.subject.accent} onClick={() => openSubject()} /> :
+           tab === 'students' ? <PrimaryButton icon={Plus} label="Nouvel étudiant"  color={C.student.accent} onClick={() => openStudent()} /> :
+                                <PrimaryButton icon={Plus} label="Nouvel enseignant" color={C.teacher.accent} onClick={() => openTeacher()} />}
         </div>
       )}
 
       {/* Tab bar */}
-      <div className="flex items-center gap-1 mb-6 p-1 rounded-2xl" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-        <Tab active={tab === 'programs'} onClick={() => setTab('programs')} icon={FolderOpen}   label="Filières" count={programs.length} color={C.program} />
-        <Tab active={tab === 'levels'}   onClick={() => setTab('levels')}   icon={BarChart3}    label="Niveaux"  count={levels.length}   color={C.level}   />
-        <Tab active={tab === 'classes'}  onClick={() => setTab('classes')}  icon={Layers}       label="Classes"  count={classes.length}  color={C.class}   />
+      <div className="flex items-center gap-1 mb-6 p-1 rounded-2xl overflow-x-auto" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+        <Tab active={tab === 'programs'} onClick={() => setTab('programs')} icon={FolderOpen}   label="Filières"    count={programs.length} color={C.program} />
+        <Tab active={tab === 'levels'}   onClick={() => setTab('levels')}   icon={BarChart3}    label="Niveaux"     count={levels.length}   color={C.level}   />
+        <Tab active={tab === 'classes'}  onClick={() => setTab('classes')}  icon={Layers}       label="Classes"     count={classes.length}  color={C.class}   />
+        <Tab active={tab === 'subjects'} onClick={() => setTab('subjects')} icon={BookOpen}     label="Matières"    count={subjects.length} color={C.subject} />
+        <Tab active={tab === 'students'} onClick={() => setTab('students')} icon={Users}        label="Étudiants"   count={students.length} color={C.student} />
+        <Tab active={tab === 'teachers'} onClick={() => setTab('teachers')} icon={UserCheck}     label="Enseignants" count={teachers.length} color={C.teacher} />
       </div>
 
       {/* Filter bar */}
       <FilterBar>
         <SearchInput value={search} onChange={e => setSearch(e.target.value)}
-                     placeholder={tab === 'programs' ? 'Rechercher une filière…' : tab === 'levels' ? 'Rechercher un niveau…' : 'Rechercher une classe…'} />
+                     placeholder={
+                       tab === 'programs' ? 'Rechercher une filière…' :
+                       tab === 'levels'   ? 'Rechercher un niveau…' :
+                       tab === 'classes'  ? 'Rechercher une classe…' :
+                       tab === 'subjects' ? 'Rechercher une matière…' :
+                       tab === 'students' ? 'Rechercher un étudiant (nom, matricule, email)…' :
+                                            'Rechercher un enseignant (nom, matricule, spécialité)…'
+                     } />
         {tab === 'levels' && (
           <FilterSelect value={filterProgram} onChange={e => setFilterProgram(e.target.value)}>
             <option value="">Toutes les filières</option>
@@ -450,8 +633,111 @@ export default function PedagogicalManager({ showHeader = true }) {
             </div>
           )}
 
+          {/* SUBJECTS grid */}
+          {tab === 'subjects' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              {paginated.map(s => (
+                <div key={s.id} className="card p-5 hover:-translate-y-1 transition-transform duration-200">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="h-11 w-11 rounded-2xl flex items-center justify-center" style={{ background: C.subject.icon }}>
+                      <BookOpen className="h-5 w-5" style={{ color: C.subject.accent }} />
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-1 rounded-full" style={{ background: C.subject.bg, color: C.subject.accent }}>
+                      Coeff. {s.coefficient}
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-extrabold mb-0.5" style={{ color: '#0f172a' }}>{s.name}</h3>
+                  <p className="text-xs font-mono font-bold mb-2" style={{ color: C.subject.accent }}>{s.code}</p>
+                  {s.description && <p className="text-xs mb-3 line-clamp-2" style={{ color: '#64748b' }}>{s.description}</p>}
+                  <div className="flex items-center gap-4 text-xs py-3 mb-3" style={{ borderTop: '1px solid #f1f5f9', borderBottom: '1px solid #f1f5f9' }}>
+                    <span style={{ color: '#64748b' }}>{s.hours_per_week}h/semaine</span>
+                    <span style={{ color: '#64748b' }}>{s.levels_count ?? 0} niveau{(s.levels_count ?? 0) > 1 ? 'x' : ''}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => openSubject(s)}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-colors"
+                      style={{ background: C.subject.bg, color: C.subject.accent }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = '0.8'}
+                      onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+                      <Edit className="h-3.5 w-3.5" /> Modifier
+                    </button>
+                    <IconBtn icon={Trash2} color="#ef4444" hoverBg="#fef2f2"
+                      onClick={() => softDelete(academicService.deleteSubject, s.id, reloadSubjects, confirm, notify)} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* STUDENTS grid */}
+          {tab === 'students' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              {paginated.map(s => (
+                <div key={s.id} className="card p-5 hover:-translate-y-1 transition-transform duration-200">
+                  <div className="flex items-start justify-between mb-4">
+                    <Avatar name={s.full_name || ''} color={C.student.accent} />
+                    <span className="text-[10px] font-bold px-2 py-1 rounded-full"
+                          style={{ background: (s.status || '').toUpperCase() === 'ACTIVE' ? C.student.bg : '#f1f5f9',
+                                   color: (s.status || '').toUpperCase() === 'ACTIVE' ? C.student.accent : '#94a3b8' }}>
+                      {(s.status || '').toUpperCase() === 'ACTIVE' ? 'Actif' : (s.status || '—')}
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-extrabold mb-0.5" style={{ color: '#0f172a' }}>{s.full_name || '—'}</h3>
+                  <p className="text-xs font-mono font-bold mb-2" style={{ color: C.student.accent }}>{s.matricule}</p>
+                  <div className="text-xs mb-3 space-y-0.5" style={{ color: '#64748b' }}>
+                    <p className="truncate">{s.email}</p>
+                    {s.program_name && <p>{s.program_name}</p>}
+                  </div>
+                  <div className="flex gap-2 pt-3" style={{ borderTop: '1px solid #f1f5f9' }}>
+                    <button onClick={() => openStudent(s)}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-colors"
+                      style={{ background: C.student.bg, color: C.student.accent }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = '0.8'}
+                      onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+                      <Edit className="h-3.5 w-3.5" /> Modifier
+                    </button>
+                    <IconBtn icon={Trash2} color="#ef4444" hoverBg="#fef2f2"
+                      onClick={() => softDelete(studentsService.delete, s.id, reloadStudents, confirm, notify)} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* TEACHERS grid */}
+          {tab === 'teachers' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              {paginated.map(t => (
+                <div key={t.id} className="card p-5 hover:-translate-y-1 transition-transform duration-200">
+                  <div className="flex items-start justify-between mb-4">
+                    <Avatar name={t.full_name || ''} color={C.teacher.accent} />
+                    <span className="text-[10px] font-bold px-2 py-1 rounded-full" style={{ background: C.teacher.bg, color: C.teacher.accent }}>
+                      {t.contract_type === 'PERMANENT' ? 'Permanent' : t.contract_type || '—'}
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-extrabold mb-0.5" style={{ color: '#0f172a' }}>{t.full_name || '—'}</h3>
+                  <p className="text-xs font-mono font-bold mb-2" style={{ color: C.teacher.accent }}>{t.employee_id}</p>
+                  <div className="text-xs mb-3 space-y-0.5" style={{ color: '#64748b' }}>
+                    {t.specialization && <p>{t.specialization}</p>}
+                  </div>
+                  <div className="flex gap-2 pt-3" style={{ borderTop: '1px solid #f1f5f9' }}>
+                    <button onClick={() => openTeacher(t)}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-colors"
+                      style={{ background: C.teacher.bg, color: C.teacher.accent }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = '0.8'}
+                      onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+                      <Edit className="h-3.5 w-3.5" /> Modifier
+                    </button>
+                    <IconBtn icon={Trash2} color="#ef4444" hoverBg="#fef2f2"
+                      onClick={() => softDelete(academicService.deleteTeacher, t.id, reloadTeachers, confirm, notify)} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage}
-            accentColor={tab === 'programs' ? C.program.accent : tab === 'levels' ? C.level.accent : C.class.accent}
+            accentColor={C[tab === 'programs' ? 'program' : tab === 'levels' ? 'level' : tab === 'classes' ? 'class' : tab === 'subjects' ? 'subject' : tab === 'students' ? 'student' : 'teacher'].accent}
             totalItems={current.length} itemsPerPage={ITEMS} />
         </>
       )}
@@ -595,6 +881,151 @@ export default function PedagogicalManager({ showHeader = true }) {
             </FormField>
           </FormSection>
           <ModalFooter onCancel={() => setModal(null)} submitLabel={editing ? 'Mettre à jour' : 'Créer'} loading={saving} color={C.class.accent} />
+        </form>
+      </Modal>
+
+      {/* ── Modal: Subject (matière) ──────────────────────────── */}
+      <Modal open={modal === 'subject'} onClose={() => setModal(null)}
+             title={editing ? 'Modifier la matière' : 'Nouvelle matière'}
+             accentColor={C.subject.accent} size="md">
+        <form onSubmit={saveSubject} className="space-y-5">
+          <FormSection title="Informations de la matière" icon={BookOpen}>
+            <FormField label="Intitulé" required>
+              <FormInput {...sjf('name')} placeholder="ex: Mathématiques Avancées" required />
+            </FormField>
+            <FormField label="Code UE" required>
+              <FormInput {...sjf('code')} placeholder="ex: MATH-101" required />
+            </FormField>
+            <FormField label="Coefficient" required>
+              <FormInput type="number" step="0.25" {...sjf('coefficient')} min="0" required />
+            </FormField>
+            <FormField label="Volume horaire hebdomadaire (h)" required>
+              <FormInput type="number" step="0.5" {...sjf('hours_per_week')} min="0" required />
+            </FormField>
+            <FormField label="Description" fullWidth>
+              <textarea className="input-field" rows={3}
+                value={sjForm.description} onChange={e => setSjForm(p => ({ ...p, description: e.target.value }))}
+                placeholder="Description optionnelle…" />
+            </FormField>
+          </FormSection>
+          <ModalFooter onCancel={() => setModal(null)} submitLabel={editing ? 'Mettre à jour' : 'Créer la matière'} loading={saving} color={C.subject.accent} />
+        </form>
+      </Modal>
+
+      {/* ── Modal: Student (étudiant) ─────────────────────────── */}
+      <Modal open={modal === 'student'} onClose={() => setModal(null)}
+             title={editing ? 'Modifier l\'étudiant' : 'Nouvel étudiant'}
+             accentColor={C.student.accent} size="md">
+        <form onSubmit={saveStudent} className="space-y-5">
+          <FormSection title="Informations de l'étudiant" icon={Users}>
+            <FormField label="Matricule" required fullWidth>
+              <FormInput {...stf('matricule')} required />
+            </FormField>
+            <FormField label="Prénom" required>
+              <FormInput {...stf('first_name')} required />
+            </FormField>
+            <FormField label="Nom" required>
+              <FormInput {...stf('last_name')} required />
+            </FormField>
+            <FormField label="Email" required>
+              <FormInput type="email" {...stf('email')} required disabled={!!editing} />
+            </FormField>
+            <FormField label="Téléphone">
+              <FormInput type="tel" {...stf('phone')} />
+            </FormField>
+            <FormField label="Genre">
+              <FormSelect {...stf('gender')}>
+                <option value="M">Masculin</option>
+                <option value="F">Féminin</option>
+              </FormSelect>
+            </FormField>
+            <FormField label="Statut">
+              <FormSelect {...stf('status')}>
+                <option value="ACTIVE">Actif</option>
+                <option value="INACTIVE">Inactif</option>
+                <option value="SUSPENDED">Suspendu</option>
+                <option value="GRADUATED">Diplômé</option>
+              </FormSelect>
+            </FormField>
+            {!editing && (
+              <FormField label="Site" required>
+                <FormSelect {...stf('site')} required>
+                  <option value="">Sélectionner un site</option>
+                  {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </FormSelect>
+              </FormField>
+            )}
+            {!editing && (
+              <FormField label="Classe (optionnel)">
+                <FormSelect {...stf('class_id')}>
+                  <option value="">Aucune — à inscrire plus tard</option>
+                  {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </FormSelect>
+              </FormField>
+            )}
+          </FormSection>
+          <ModalFooter onCancel={() => setModal(null)} submitLabel={editing ? 'Mettre à jour' : 'Créer l\'étudiant'} loading={saving} color={C.student.accent} />
+        </form>
+      </Modal>
+
+      {/* ── Modal: Teacher (enseignant) ───────────────────────── */}
+      <Modal open={modal === 'teacher'} onClose={() => setModal(null)}
+             title={editing ? 'Modifier l\'enseignant' : 'Nouvel enseignant'}
+             accentColor={C.teacher.accent} size="md">
+        <form onSubmit={saveTeacher} className="space-y-5">
+          <FormSection title="Informations de l'enseignant" icon={UserCheck}>
+            <FormField label="Prénom" required>
+              <FormInput {...tf('first_name')} required disabled={!!editing} />
+            </FormField>
+            <FormField label="Nom" required>
+              <FormInput {...tf('last_name')} required disabled={!!editing} />
+            </FormField>
+            <FormField label="Email" required>
+              <FormInput type="email" {...tf('email')} required disabled={!!editing} />
+            </FormField>
+            <FormField label="Téléphone">
+              <FormInput type="tel" {...tf('phone')} />
+            </FormField>
+            <FormField label="Matricule" required>
+              <FormInput {...tf('employee_id')} placeholder="ENS-2026-0001" required />
+            </FormField>
+            <FormField label="Spécialité">
+              <FormInput {...tf('specialization')} placeholder="ex: Informatique, Mathématiques…" />
+            </FormField>
+            <FormField label="Qualification">
+              <FormInput {...tf('qualification')} />
+            </FormField>
+            <FormField label="Date d'embauche">
+              <FormInput type="date" {...tf('hire_date')} />
+            </FormField>
+            <FormField label="Type de contrat">
+              <FormSelect {...tf('contract_type')}>
+                <option value="PERMANENT">Permanent</option>
+                <option value="VACATAIRE">Vacataire</option>
+                <option value="CONTRACTUEL">Contractuel</option>
+              </FormSelect>
+            </FormField>
+            <FormField label="Taux horaire">
+              <FormInput type="number" step="0.01" {...tf('hourly_rate')} />
+            </FormField>
+            {!editing && (
+              <>
+                <FormField label="Site">
+                  <FormSelect {...tf('site')}>
+                    <option value="">Sélectionner un site</option>
+                    {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </FormSelect>
+                </FormField>
+                <FormField label="Mot de passe" required>
+                  <FormInput type="password" {...tf('password')} required minLength={6} />
+                </FormField>
+                <FormField label="Confirmer le mot de passe" required>
+                  <FormInput type="password" {...tf('password_confirm')} required minLength={6} />
+                </FormField>
+              </>
+            )}
+          </FormSection>
+          <ModalFooter onCancel={() => setModal(null)} submitLabel={editing ? 'Mettre à jour' : 'Créer l\'enseignant'} loading={saving} color={C.teacher.accent} />
         </form>
       </Modal>
     </div>
