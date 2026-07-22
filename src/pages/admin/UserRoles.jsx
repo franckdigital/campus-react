@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Shield, Users, Key, Activity, Plus, Edit, Trash2, X,
+  Shield, Users, Key, Activity, Plus, Edit, Trash2, X, UserX,
   Search, CheckCircle, XCircle, Lock, UserCheck, KeyRound,
   UserPlus, RefreshCw, Globe, AlertTriangle, ChevronDown, ChevronRight
 } from 'lucide-react';
@@ -10,6 +10,7 @@ import { academicService, sitesService } from '../../services';
 import { useApi } from '../../hooks/useApi';
 import { PageHeader, FilterBar, SearchInput, FilterSelect, PrimaryButton, IconBtn, Pagination } from '../../components/ui/PageHeader';
 import BackToParametres from '../../components/ui/BackToParametres';
+import { useConfirm } from '../../components/ConfirmDialog';
 import { MATRIX_LS, PERMISSION_GROUPS, MATRIX_ROLES, buildDefaultMatrix, loadMatrix } from '../../utils/permissionMatrix';
 
 const COLOR    = '#7c3aed';
@@ -140,6 +141,7 @@ function FooterBtns({ onCancel, submitLabel, loading, color = COLOR }) {
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 export default function UserRoles() {
+  const confirm = useConfirm();
   const [activeTab, setActiveTab] = useState('matrix');
 
   // ── Pagination ────────────────────────────────────────────────────────────
@@ -278,9 +280,23 @@ export default function UserRoles() {
     } catch { alert('Erreur'); }
   }
 
-  async function handleDeleteUser(user) {
-    if (!confirm(`Désactiver le compte de ${user.first_name} ${user.last_name} ?`)) return;
-    await handleToggleActive(user);
+  async function handleDeactivateUser(user) {
+    // Was previously wired to the same toggle as the Actif/Inactif switch —
+    // clicking it on an already-inactive account silently REACTIVATED it
+    // instead of doing nothing/confirming a deactivation. This action must
+    // always deactivate, never flip based on current state.
+    if (!user.is_active) return;
+    const ok = await confirm({
+      title: 'Désactiver ce compte ?',
+      message: `${user.first_name} ${user.last_name} ne pourra plus se connecter tant que le compte reste inactif.`,
+      confirmLabel: 'Désactiver',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await usersService.update(user.id, { is_active: false });
+      refetchUsers();
+    } catch { alert('Erreur'); }
   }
 
   // ── Reset password ───────────────────────────────────────────────────────
@@ -314,7 +330,13 @@ export default function UserRoles() {
 
   async function handleDeleteRole(role) {
     if (role.is_system) { alert('Impossible de supprimer un rôle système'); return; }
-    if (!confirm(`Supprimer le rôle "${role.name}" ?`)) return;
+    const ok = await confirm({
+      title: 'Supprimer ce rôle ?',
+      message: `Le rôle "${role.name}" sera supprimé — les utilisateurs qui l'avaient ne l'auront plus.`,
+      confirmLabel: 'Supprimer',
+      destructive: true,
+    });
+    if (!ok) return;
     try { await usersService.deleteRole(role.id); refetchRoles(); } catch { alert('Erreur'); }
   }
 
@@ -728,7 +750,7 @@ export default function UserRoles() {
                                            icon={UserCheck} color={COLOR} hoverBg={COLOR_IC} title="Assigner un rôle" />
                                   <IconBtn onClick={() => { setResetTarget(user); setResetPasswordValue(''); setResetError(''); setResetDone(false); }}
                                            icon={KeyRound} color="#d97706" hoverBg="#fef3c7" title="Réinitialiser le mot de passe" />
-                                  <IconBtn onClick={() => handleDeleteUser(user)} icon={Trash2} color="#ef4444" hoverBg="#fee2e2" title="Supprimer" />
+                                  <IconBtn onClick={() => handleDeactivateUser(user)} icon={UserX} color="#ef4444" hoverBg="#fee2e2" title="Désactiver le compte" />
                                 </div>
                               </td>
                             </tr>
