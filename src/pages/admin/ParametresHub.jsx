@@ -71,11 +71,11 @@ const MODULES = [
 // niveau, donc Sites puis Filières/Niveaux doivent exister avant).
 const WORKFLOW_STEPS = [
   {
-    title: "Personnaliser l'application",
-    description: "Définissez le nom de l'établissement, le logo et les couleurs affichés dans toute l'interface.",
-    module: 'Workspace Studio',
-    gradient: 'linear-gradient(135deg, #fb923c, #f59e0b)',
-    path: '/admin/workspace',
+    title: 'Compléter les informations générales',
+    description: "Renseignez les coordonnées de l'établissement (email, téléphone, adresse) affichées sur les documents.",
+    module: 'Paramètres généraux',
+    gradient: 'linear-gradient(135deg, #6366f1, #4338ca)',
+    path: '/admin/settings/general',
   },
   {
     title: 'Créer les sites',
@@ -113,11 +113,11 @@ const WORKFLOW_STEPS = [
     path: '/admin/reminder-settings',
   },
   {
-    title: 'Compléter les informations générales',
-    description: "Renseignez les coordonnées de l'établissement (email, téléphone, adresse) affichées sur les documents.",
-    module: 'Paramètres généraux',
-    gradient: 'linear-gradient(135deg, #6366f1, #4338ca)',
-    path: '/admin/settings/general',
+    title: "Personnaliser l'application",
+    description: "Définissez le nom de l'établissement, le logo et les couleurs affichés dans toute l'interface.",
+    module: 'Workspace Studio',
+    gradient: 'linear-gradient(135deg, #fb923c, #f59e0b)',
+    path: '/admin/workspace',
   },
 ];
 
