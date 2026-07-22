@@ -6,15 +6,15 @@ import { Zap, Globe, Layers, Shield, Settings as SettingsIcon, DollarSign, BellR
 // (ediligence/frontend/src/pages/ParametresPage.js): gradient top strip,
 // gradient icon box, title, description, "Accéder" with arrow, optional
 // badge, plus a bottom info banner.
+// Ordre aligné sur les 7 étapes du guide de workflow ci-dessous (WORKFLOW_STEPS).
 const MODULES = [
   {
-    id: 'workspace-studio',
-    title: 'Workspace Studio',
-    description: "Logo, nom de l'application, couleurs et thème visuel",
-    icon: Zap,
-    gradient: 'linear-gradient(135deg, #fb923c, #f59e0b)',
-    badge: 'Nouveau',
-    path: '/admin/workspace',
+    id: 'general-settings',
+    title: 'Paramètres généraux',
+    description: 'Informations établissement, académique, finance, notifications, sécurité, apparence',
+    icon: SettingsIcon,
+    gradient: 'linear-gradient(135deg, #6366f1, #4338ca)',
+    path: '/admin/settings/general',
   },
   {
     id: 'sites-management',
@@ -41,14 +41,6 @@ const MODULES = [
     path: '/admin/fee-config',
   },
   {
-    id: 'reminder-settings',
-    title: 'Alertes & Rappels',
-    description: "Configurer les rappels automatiques et manuels d'échéancier et d'examens",
-    icon: BellRing,
-    gradient: 'linear-gradient(135deg, #fb7185, #e11d48)',
-    path: '/admin/reminder-settings',
-  },
-  {
     id: 'rights-permissions',
     title: 'Droits & Permissions',
     description: "Configurer les droits d'accès et permissions système",
@@ -57,12 +49,21 @@ const MODULES = [
     path: '/admin/user-roles',
   },
   {
-    id: 'general-settings',
-    title: 'Paramètres généraux',
-    description: 'Informations établissement, académique, finance, notifications, sécurité, apparence',
-    icon: SettingsIcon,
-    gradient: 'linear-gradient(135deg, #6366f1, #4338ca)',
-    path: '/admin/settings/general',
+    id: 'reminder-settings',
+    title: 'Alertes & Rappels',
+    description: "Configurer les rappels automatiques et manuels d'échéancier et d'examens",
+    icon: BellRing,
+    gradient: 'linear-gradient(135deg, #fb7185, #e11d48)',
+    path: '/admin/reminder-settings',
+  },
+  {
+    id: 'workspace-studio',
+    title: 'Workspace Studio',
+    description: "Logo, nom de l'application, couleurs et thème visuel",
+    icon: Zap,
+    gradient: 'linear-gradient(135deg, #fb923c, #f59e0b)',
+    badge: 'Nouveau',
+    path: '/admin/workspace',
   },
 ];
 
@@ -244,13 +245,13 @@ export default function ParametresHub() {
         <div>
           <h3 className="text-sm font-semibold mb-1" style={{ color: '#334155' }}>Administration Système</h3>
           <div className="text-xs space-y-1" style={{ color: '#94a3b8' }}>
-            <p>• <span className="font-medium" style={{ color: '#64748b' }}>Workspace Studio</span> — Personnalisez logo, nom et couleurs de l'interface</p>
+            <p>• <span className="font-medium" style={{ color: '#64748b' }}>Paramètres généraux</span> — Établissement, académique, finance, sécurité...</p>
             <p>• <span className="font-medium" style={{ color: '#64748b' }}>Gestion des Sites</span> — Configurez les sites et campus de l'établissement</p>
             <p>• <span className="font-medium" style={{ color: '#64748b' }}>Filières, Niveaux & Classes</span> — Structurez l'offre pédagogique par site</p>
             <p>• <span className="font-medium" style={{ color: '#64748b' }}>Barème des frais</span> — Fixez les montants de scolarité par site, filière et niveau</p>
-            <p>• <span className="font-medium" style={{ color: '#64748b' }}>Alertes & Rappels</span> — Rappels automatiques et manuels d'échéancier et d'examens</p>
             <p>• <span className="font-medium" style={{ color: '#64748b' }}>Droits & Permissions</span> — Configurez les niveaux d'accès par rôle</p>
-            <p>• <span className="font-medium" style={{ color: '#64748b' }}>Paramètres généraux</span> — Établissement, académique, finance, sécurité...</p>
+            <p>• <span className="font-medium" style={{ color: '#64748b' }}>Alertes & Rappels</span> — Rappels automatiques et manuels d'échéancier et d'examens</p>
+            <p>• <span className="font-medium" style={{ color: '#64748b' }}>Workspace Studio</span> — Personnalisez logo, nom et couleurs de l'interface</p>
           </div>
         </div>
       </div>
