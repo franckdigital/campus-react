@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Layers, Plus, Edit, Trash2, BookOpen, GraduationCap,
-  BarChart3, FolderOpen, Users, UserCheck,
+  BarChart3, FolderOpen, Users, UserCheck, Repeat,
 } from 'lucide-react';
 import { academicService, sitesService, studentsService } from '../../services';
 import { useApi } from '../../hooks/useApi';
@@ -15,14 +15,6 @@ import {
   Pagination, Avatar,
 } from '../ui/PageHeader';
 
-// Kept in sync with academic.Level.CYCLE_CHOICES / finance.FeeConfiguration.CYCLE_CHOICES (backend).
-const CYCLES = [
-  { value: 'L1', label: 'Licence 1' }, { value: 'L2', label: 'Licence 2' }, { value: 'L3', label: 'Licence 3' },
-  { value: 'BTS1', label: 'BTS 1' }, { value: 'BTS2', label: 'BTS 2' },
-  { value: 'DUT1', label: 'DUT 1' }, { value: 'DUT2', label: 'DUT 2' },
-  { value: 'M1', label: 'Master 1' }, { value: 'M2', label: 'Master 2' },
-];
-
 /* ── colour tokens ──────────────────────────────────────────── */
 const C = {
   program : { accent: '#6366f1', bg: '#eef2ff', icon: '#c7d2fe' },
@@ -31,6 +23,7 @@ const C = {
   subject : { accent: '#7c3aed', bg: '#f5f3ff', icon: '#ddd6fe' },
   student : { accent: '#2563eb', bg: '#eff6ff', icon: '#dbeafe' },
   teacher : { accent: '#059669', bg: '#ecfdf5', icon: '#a7f3d0' },
+  cycle   : { accent: '#d97706', bg: '#fffbeb', icon: '#fde68a' },
 };
 
 /* ── small helpers ───────────────────────────────────────────── */
@@ -112,6 +105,8 @@ export default function PedagogicalManager({ showHeader = true }) {
     useApi(() => academicService.getSubjects({ is_active: true, page_size: 500 }), [], true);
   const { data: studentsData, execute: reloadStudents } =
     useApi(() => studentsService.getAll({ ...siteFilter, page_size: 500 }), [selectedSite], true);
+  const { data: cyclesData, execute: reloadCycles } =
+    useApi(() => academicService.getCycles({ page_size: 500 }), [], true);
 
   const programs = list(programsData);
   const levels   = list(levelsData);
@@ -119,6 +114,7 @@ export default function PedagogicalManager({ showHeader = true }) {
   const sites    = list(sitesData);
   const years    = list(yearsData);
   const teachers = list(teachersData);
+  const cycles   = list(cyclesData);
   const subjects = list(subjectsData);
   const students = list(studentsData);
 
@@ -154,6 +150,7 @@ export default function PedagogicalManager({ showHeader = true }) {
     (t.employee_id || '').toLowerCase().includes(search.toLowerCase()) ||
     (t.specialization || '').toLowerCase().includes(search.toLowerCase())
   );
+  const filtCycles = cycles.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.code.toLowerCase().includes(search.toLowerCase()));
 
   const current =
     tab === 'programs' ? filtPrograms :
@@ -161,7 +158,8 @@ export default function PedagogicalManager({ showHeader = true }) {
     tab === 'classes'  ? filtClasses :
     tab === 'subjects' ? filtSubjects :
     tab === 'students' ? filtStudents :
-                         filtTeachers;
+    tab === 'teachers' ? filtTeachers :
+                         filtCycles;
   const totalPages = Math.ceil(current.length / ITEMS);
   const paginated = current.slice((page - 1) * ITEMS, page * ITEMS);
 
@@ -207,6 +205,11 @@ export default function PedagogicalManager({ showHeader = true }) {
   };
   const [tForm, setTForm] = useState(emptyTeacher);
   const tf = k => ({ value: tForm[k], onChange: e => setTForm(p => ({ ...p, [k]: e.target.value })) });
+
+  /* cycle form */
+  const emptyCycleForm = { name: '', code: '', order: 1 };
+  const [cyForm, setCyForm] = useState(emptyCycleForm);
+  const cyf = k => ({ value: cyForm[k], onChange: e => setCyForm(p => ({ ...p, [k]: e.target.value })) });
 
   /* open helpers */
   function openProgram(item = null) {
@@ -271,6 +274,11 @@ export default function PedagogicalManager({ showHeader = true }) {
       password: '', password_confirm: '', site: '',
     } : { ...emptyTeacher, site: selectedSite !== 'all' ? selectedSite : '' });
     setModal('teacher');
+  }
+  function openCycle(item = null) {
+    setEditing(item);
+    setCyForm(item ? { name: item.name, code: item.code, order: item.order } : emptyCycleForm);
+    setModal('cycle');
   }
 
   /* level ↔ subjects management */
@@ -421,6 +429,15 @@ export default function PedagogicalManager({ showHeader = true }) {
     } catch (err) { notify({ type: 'error', title: 'Erreur', message: err.message || 'Erreur lors de la sauvegarde' }); }
     setSaving(false);
   }
+  async function saveCycle(e) {
+    e.preventDefault(); setSaving(true);
+    try {
+      if (editing) await academicService.updateCycle(editing.id, cyForm);
+      else await academicService.createCycle(cyForm);
+      setModal(null); reloadCycles();
+    } catch (err) { notify({ type: 'error', title: 'Erreur', message: err.message || 'Erreur lors de la sauvegarde' }); }
+    setSaving(false);
+  }
 
   const loading = lprog || llev || lcls;
 
@@ -437,7 +454,8 @@ export default function PedagogicalManager({ showHeader = true }) {
             tab === 'classes'  ? <PrimaryButton icon={Plus} label="Nouvelle classe"  color={C.class.accent}   onClick={() => openClass()} /> :
             tab === 'subjects' ? <PrimaryButton icon={Plus} label="Nouvelle matière" color={C.subject.accent} onClick={() => openSubject()} /> :
             tab === 'students' ? <PrimaryButton icon={Plus} label="Nouvel étudiant"  color={C.student.accent} onClick={() => openStudent()} /> :
-                                 <PrimaryButton icon={Plus} label="Nouvel enseignant" color={C.teacher.accent} onClick={() => openTeacher()} />
+            tab === 'teachers' ? <PrimaryButton icon={Plus} label="Nouvel enseignant" color={C.teacher.accent} onClick={() => openTeacher()} /> :
+                                 <PrimaryButton icon={Plus} label="Nouveau cycle"     color={C.cycle.accent}   onClick={() => openCycle()} />
           }
         />
       )}
@@ -449,7 +467,8 @@ export default function PedagogicalManager({ showHeader = true }) {
            tab === 'classes'  ? <PrimaryButton icon={Plus} label="Nouvelle classe"  color={C.class.accent}   onClick={() => openClass()} /> :
            tab === 'subjects' ? <PrimaryButton icon={Plus} label="Nouvelle matière" color={C.subject.accent} onClick={() => openSubject()} /> :
            tab === 'students' ? <PrimaryButton icon={Plus} label="Nouvel étudiant"  color={C.student.accent} onClick={() => openStudent()} /> :
-                                <PrimaryButton icon={Plus} label="Nouvel enseignant" color={C.teacher.accent} onClick={() => openTeacher()} />}
+           tab === 'teachers' ? <PrimaryButton icon={Plus} label="Nouvel enseignant" color={C.teacher.accent} onClick={() => openTeacher()} /> :
+                                <PrimaryButton icon={Plus} label="Nouveau cycle"     color={C.cycle.accent}   onClick={() => openCycle()} />}
         </div>
       )}
 
@@ -459,6 +478,7 @@ export default function PedagogicalManager({ showHeader = true }) {
         <Tab active={tab === 'levels'}   onClick={() => setTab('levels')}   icon={BarChart3}    label="Niveaux"     count={levels.length}   color={C.level}   />
         <Tab active={tab === 'classes'}  onClick={() => setTab('classes')}  icon={Layers}       label="Classes"     count={classes.length}  color={C.class}   />
         <Tab active={tab === 'subjects'} onClick={() => setTab('subjects')} icon={BookOpen}     label="Matières"    count={subjects.length} color={C.subject} />
+        <Tab active={tab === 'cycles'}   onClick={() => setTab('cycles')}   icon={Repeat}       label="Cycles"      count={cycles.length}   color={C.cycle}   />
         {/* Étudiants/Enseignants temporairement masqués ici (à revoir plus tard) —
             logique et onglets conservés intacts plus bas, juste pas d'accès depuis cette barre. */}
       </div>
@@ -472,7 +492,8 @@ export default function PedagogicalManager({ showHeader = true }) {
                        tab === 'classes'  ? 'Rechercher une classe…' :
                        tab === 'subjects' ? 'Rechercher une matière…' :
                        tab === 'students' ? 'Rechercher un étudiant (nom, matricule, email)…' :
-                                            'Rechercher un enseignant (nom, matricule, spécialité)…'
+                       tab === 'teachers' ? 'Rechercher un enseignant (nom, matricule, spécialité)…' :
+                                            'Rechercher un cycle…'
                      } />
         {tab === 'levels' && (
           <FilterSelect value={filterProgram} onChange={e => setFilterProgram(e.target.value)}>
@@ -749,8 +770,42 @@ export default function PedagogicalManager({ showHeader = true }) {
             </div>
           )}
 
+          {/* CYCLES grid */}
+          {tab === 'cycles' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              {paginated.map(cy => (
+                <div key={cy.id} className="card p-5 hover:-translate-y-1 transition-transform duration-200">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="h-11 w-11 rounded-2xl flex items-center justify-center" style={{ background: C.cycle.icon }}>
+                      <Repeat className="h-5 w-5" style={{ color: C.cycle.accent }} />
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-1 rounded-full" style={{ background: C.cycle.bg, color: C.cycle.accent }}>
+                      Ordre {cy.order}
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-extrabold mb-0.5" style={{ color: '#0f172a' }}>{cy.name}</h3>
+                  <p className="text-xs font-mono font-bold mb-2" style={{ color: C.cycle.accent }}>{cy.code}</p>
+                  <div className="flex items-center gap-1.5 mb-4 text-xs" style={{ color: '#64748b' }}>
+                    {cy.levels_count ?? 0} niveau{(cy.levels_count ?? 0) > 1 ? 'x' : ''} rattaché{(cy.levels_count ?? 0) > 1 ? 's' : ''}
+                  </div>
+                  <div className="flex gap-2 pt-3" style={{ borderTop: '1px solid #f1f5f9' }}>
+                    <button onClick={() => openCycle(cy)}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-colors"
+                      style={{ background: C.cycle.bg, color: C.cycle.accent }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = '0.8'}
+                      onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+                      <Edit className="h-3.5 w-3.5" /> Modifier
+                    </button>
+                    <IconBtn icon={Trash2} color="#ef4444" hoverBg="#fef2f2"
+                      onClick={() => softDelete(academicService.deleteCycle, cy.id, reloadCycles, confirm, notify)} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage}
-            accentColor={C[tab === 'programs' ? 'program' : tab === 'levels' ? 'level' : tab === 'classes' ? 'class' : tab === 'subjects' ? 'subject' : tab === 'students' ? 'student' : 'teacher'].accent}
+            accentColor={C[tab === 'programs' ? 'program' : tab === 'levels' ? 'level' : tab === 'classes' ? 'class' : tab === 'subjects' ? 'subject' : tab === 'students' ? 'student' : tab === 'teachers' ? 'teacher' : 'cycle'].accent}
             totalItems={current.length} itemsPerPage={ITEMS} />
         </>
       )}
@@ -810,11 +865,12 @@ export default function PedagogicalManager({ showHeader = true }) {
             <FormField label="Cycle" fullWidth>
               <FormSelect {...lf('cycle')}>
                 <option value="">Aucun (pas de barème par cycle)</option>
-                {CYCLES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                {cycles.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </FormSelect>
               <p className="text-[11px] mt-1" style={{ color: '#94a3b8' }}>
                 Regroupe ce niveau avec les mêmes niveaux des autres filières (ex: tous les "Licence 3")
-                pour pouvoir leur appliquer un seul barème commun dans "Barème des frais".
+                pour pouvoir leur appliquer un seul barème commun dans "Barème des frais". Gérez la liste
+                des cycles dans l'onglet "Cycles" ci-dessus.
               </p>
             </FormField>
           </FormSection>
@@ -1049,6 +1105,26 @@ export default function PedagogicalManager({ showHeader = true }) {
             )}
           </FormSection>
           <ModalFooter onCancel={() => setModal(null)} submitLabel={editing ? 'Mettre à jour' : 'Créer l\'enseignant'} loading={saving} color={C.teacher.accent} />
+        </form>
+      </Modal>
+
+      {/* ── Modal: Cycle ───────────────────────────────────────── */}
+      <Modal open={modal === 'cycle'} onClose={() => setModal(null)}
+             title={editing ? 'Modifier le cycle' : 'Nouveau cycle'}
+             accentColor={C.cycle.accent} size="md">
+        <form onSubmit={saveCycle} className="space-y-5">
+          <FormSection title="Informations du cycle" icon={Repeat}>
+            <FormField label="Nom" required fullWidth>
+              <FormInput {...cyf('name')} placeholder="ex: Licence 3" required />
+            </FormField>
+            <FormField label="Code" required>
+              <FormInput {...cyf('code')} placeholder="ex: L3" required />
+            </FormField>
+            <FormField label="Ordre d'affichage">
+              <FormInput type="number" {...cyf('order')} min="1" />
+            </FormField>
+          </FormSection>
+          <ModalFooter onCancel={() => setModal(null)} submitLabel={editing ? 'Mettre à jour' : 'Créer le cycle'} loading={saving} color={C.cycle.accent} />
         </form>
       </Modal>
     </div>
