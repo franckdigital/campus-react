@@ -113,7 +113,7 @@ export default function Attendance() {
     [filterDate, filterClass], true
   );
 
-  const { data: classRaw }        = useApi(() => academicService.getClasses(), [], true);
+  const { data: classRaw }        = useApi(() => academicService.getClasses({ page_size: 500 }), [], true);
   const { data: enrollRaw }       = useApi(
     () => academicService.getEnrollments({ is_active: true, status: 'ENROLLED', page_size: 1000 }),
     [], true
@@ -1213,10 +1213,10 @@ function AttendanceListTab() {
   const [dateTo, setDateTo]     = useState('');
   const [page, setPage]         = useState(1);
 
-  const { data: sitesRaw }    = useApi(() => sitesService.getAll(), [], true);
-  const { data: programsRaw } = useApi(() => academicService.getPrograms(), [], true);
+  const { data: sitesRaw }    = useApi(() => sitesService.getAll({ page_size: 500 }), [], true);
+  const { data: programsRaw } = useApi(() => academicService.getPrograms({ page_size: 500 }), [], true);
   const { data: levelsRaw }   = useApi(
-    () => academicService.getLevels(filterProgram ? { program: filterProgram } : {}),
+    () => academicService.getLevels({ ...(filterProgram ? { program: filterProgram } : {}), page_size: 500 }),
     [filterProgram], true
   );
 

@@ -89,11 +89,11 @@ function EvaluationModal({ onClose, onSaved, editingEval, classes, semesters }) 
           return;
         }
       }
-      const res = await academicService.getSubjects();
+      const res = await academicService.getSubjects({ page_size: 500 });
       setSubjects(res.results || res || []);
     } catch {
       try {
-        const res = await academicService.getSubjects();
+        const res = await academicService.getSubjects({ page_size: 500 });
         setSubjects(res.results || res || []);
       } catch { setSubjects([]); }
     }
@@ -233,8 +233,8 @@ function EvaluationsTab({ selectedSite }) {
 
   const siteFilter = selectedSite !== 'all' ? { site: selectedSite } : {};
 
-  const { data: classesData } = useApi(() => academicService.getClasses(siteFilter), [selectedSite]);
-  const { data: semestersData } = useApi(() => academicService.getSemesters({}), []);
+  const { data: classesData } = useApi(() => academicService.getClasses({ ...siteFilter, page_size: 500 }), [selectedSite]);
+  const { data: semestersData } = useApi(() => academicService.getSemesters({ page_size: 500 }), []);
 
   const classes   = classesData?.results || classesData || [];
   const semesters = semestersData?.results || semestersData || [];
@@ -651,13 +651,13 @@ function GradeEntryTab({ selectedSite }) {
   const [comments, setComments]             = useState({});
   const [saving, setSaving]                 = useState(false);
 
-  const { data: sitesData } = useApi(() => sitesService.getSites(), []);
+  const { data: sitesData } = useApi(() => sitesService.getSites({ page_size: 500 }), []);
   const sites = sitesData?.results || sitesData || [];
 
   const effectiveSite = filterSite || (selectedSite !== 'all' ? selectedSite : '');
   const siteFilter = effectiveSite ? { site: effectiveSite } : {};
-  const { data: classesData }   = useApi(() => academicService.getClasses(siteFilter), [filterSite, selectedSite]);
-  const { data: semestersData } = useApi(() => academicService.getSemesters({}), []);
+  const { data: classesData }   = useApi(() => academicService.getClasses({ ...siteFilter, page_size: 500 }), [filterSite, selectedSite]);
+  const { data: semestersData } = useApi(() => academicService.getSemesters({ page_size: 500 }), []);
   const classes   = classesData?.results   || classesData   || [];
   const semesters = semestersData?.results || semestersData || [];
 
@@ -1203,8 +1203,8 @@ function BulletinsTab({ selectedSite }) {
   const [viewingCard, setViewingCard]       = useState(null);
 
   const siteFilter = selectedSite !== 'all' ? { site: selectedSite } : {};
-  const { data: classesData }   = useApi(() => academicService.getClasses(siteFilter), [selectedSite]);
-  const { data: semestersData } = useApi(() => academicService.getSemesters({}), []);
+  const { data: classesData }   = useApi(() => academicService.getClasses({ ...siteFilter, page_size: 500 }), [selectedSite]);
+  const { data: semestersData } = useApi(() => academicService.getSemesters({ page_size: 500 }), []);
   const classes   = classesData?.results   || classesData   || [];
   const semesters = semestersData?.results || semestersData || [];
 

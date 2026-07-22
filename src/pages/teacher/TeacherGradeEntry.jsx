@@ -83,7 +83,7 @@ export default function TeacherGradeEntry() {
 
   // Load semesters on mount
   useEffect(() => {
-    academicService.getSemesters({}).then(d => setSemesters(d?.results || d || [])).catch(() => {});
+    academicService.getSemesters({ page_size: 500 }).then(d => setSemesters(d?.results || d || [])).catch(() => {});
   }, []);
 
   // Update subjects list when class changes

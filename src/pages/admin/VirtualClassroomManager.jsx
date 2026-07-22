@@ -771,8 +771,8 @@ export default function VirtualClassroomManager({ classesList, subjectsList } = 
   // enough — no client-side filtering needed. Callers (e.g. the teacher
   // space) may still pass classesList/subjectsList explicitly to skip the
   // extra requests when they already have that data loaded.
-  const { data: classesData }  = useApi(() => academicService.getClasses(), [], !classesList);
-  const { data: subjectsData } = useApi(() => academicService.getSubjects(), [], !subjectsList);
+  const { data: classesData }  = useApi(() => academicService.getClasses({ page_size: 500 }), [], !classesList);
+  const { data: subjectsData } = useApi(() => academicService.getSubjects({ page_size: 500 }), [], !subjectsList);
 
   const classrooms = classroomsData?.results ?? classroomsData ?? [];
   const classes    = classesList  ?? (classesData?.results  ?? classesData  ?? []);

@@ -19,8 +19,8 @@ export default function TeacherMySubjects() {
   const [adding, setAdding] = useState(false);
 
   useEffect(() => {
-    academicService.getClasses().then(d => setClasses(d?.results || d || [])).catch(() => {});
-    academicService.getSubjects().then(d => setSubjects(d?.results || d || [])).catch(() => {});
+    academicService.getClasses({ page_size: 500 }).then(d => setClasses(d?.results || d || [])).catch(() => {});
+    academicService.getSubjects({ page_size: 500 }).then(d => setSubjects(d?.results || d || [])).catch(() => {});
   }, []);
 
   // Only offer classes on the same site(s) as the teacher's existing assignments —

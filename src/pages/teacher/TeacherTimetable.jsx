@@ -100,7 +100,7 @@ export default function TeacherTimetable() {
   useEffect(() => { reload(); }, [teacherId]);
 
   useEffect(() => {
-    academicService.getRooms({ is_active: true }).then(d => setRooms(d?.results || d || [])).catch(() => {});
+    academicService.getRooms({ is_active: true, page_size: 500 }).then(d => setRooms(d?.results || d || [])).catch(() => {});
   }, []);
 
   const sessionsByDay = useMemo(() => Array.from({ length: 6 }, (_, idx) =>

@@ -110,7 +110,7 @@ export default function Finance() {
   const [reportDate, setReportDate]     = useState(new Date().toISOString().split('T')[0]);
 
   // ── Data fetches ──────────────────────────────────────────────────
-  const { data: academicYears } = useApi(() => academicService.getAcademicYears(), [], true);
+  const { data: academicYears } = useApi(() => academicService.getAcademicYears({ page_size: 500 }), [], true);
   const currentAY = academicYears?.results?.find(y => y.is_current) || academicYears?.find?.(y => y.is_current) || academicYears?.[0];
 
   const { data: paymentMethodsData, execute: fetchPaymentMethods } = useApi(() => financeService.getPaymentMethods(), [], true);
@@ -138,7 +138,7 @@ export default function Finance() {
   };
 
   const { data: students } = useApi(
-    () => studentsService.getAll({ status: 'ACTIVE', ...siteFilter }),
+    () => studentsService.getAll({ status: 'ACTIVE', ...siteFilter, page_size: 1000 }),
     [selectedSite], true
   );
   const studentsList = students?.results || students || [];

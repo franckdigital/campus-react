@@ -40,8 +40,8 @@ export default function Settings() {
   // frais de retard) is still local-only/unwired, unchanged from before.
   const [financeData, setFinanceData] = useState({ default_payment_method: 'Espèces', mobile_money_number: '', min_enrollment_payment: '' });
 
-  const { data: academicYears, execute: fetchAcademicYears } = useApi(() => academicService.getAcademicYears(), [], true);
-  const { data: semesters, execute: fetchSemesters } = useApi(() => academicService.getSemesters(), [], true);
+  const { data: academicYears, execute: fetchAcademicYears } = useApi(() => academicService.getAcademicYears({ page_size: 500 }), [], true);
+  const { data: semesters, execute: fetchSemesters } = useApi(() => academicService.getSemesters({ page_size: 500 }), [], true);
   const { data: financeConfigs } = useApi(() => configService.list(), [], true);
 
   useEffect(() => {

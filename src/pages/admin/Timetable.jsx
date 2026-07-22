@@ -108,15 +108,15 @@ export default function Timetable() {
   const siteParam = selectedSite !== 'all' ? { site_id: selectedSite } : {};
 
   // ── Fetch reference data ─────────────────────────────────────
-  const { data: academicYearsData } = useApi(() => academicService.getAcademicYears(), [], true);
+  const { data: academicYearsData } = useApi(() => academicService.getAcademicYears({ page_size: 500 }), [], true);
 
   // Semesters: server-filtered by selected year (display) or form year
   const { data: semestersData } = useApi(
-    () => academicService.getSemesters(filterYear !== 'all' ? { academic_year: filterYear } : {}),
+    () => academicService.getSemesters({ ...(filterYear !== 'all' ? { academic_year: filterYear } : {}), page_size: 500 }),
     [filterYear], true
   );
   const { data: formSemestersData } = useApi(
-    () => academicService.getSemesters(formData.academic_year_id ? { academic_year: formData.academic_year_id } : {}),
+    () => academicService.getSemesters({ ...(formData.academic_year_id ? { academic_year: formData.academic_year_id } : {}), page_size: 500 }),
     [formData.academic_year_id], true
   );
 
@@ -125,6 +125,7 @@ export default function Timetable() {
     () => academicService.getClasses({
       ...siteParam,
       ...(filterYear !== 'all' ? { academic_year: filterYear } : {}),
+      page_size: 500,
     }),
     [selectedSite, filterYear], true
   );
@@ -132,13 +133,14 @@ export default function Timetable() {
     () => academicService.getClasses({
       ...siteParam,
       ...(formData.academic_year_id ? { academic_year: formData.academic_year_id } : {}),
+      page_size: 500,
     }),
     [selectedSite, formData.academic_year_id], true
   );
 
-  const { data: subjectsData } = useApi(() => academicService.getSubjects(siteParam), [selectedSite], true);
-  const { data: teachersData } = useApi(() => academicService.getTeachers(siteParam), [selectedSite], true);
-  const { data: roomsData }    = useApi(() => academicService.getRooms(siteParam),    [selectedSite], true);
+  const { data: subjectsData } = useApi(() => academicService.getSubjects({ ...siteParam, page_size: 500 }), [selectedSite], true);
+  const { data: teachersData } = useApi(() => academicService.getTeachers({ ...siteParam, page_size: 500 }), [selectedSite], true);
+  const { data: roomsData }    = useApi(() => academicService.getRooms({ ...siteParam, page_size: 500 }),    [selectedSite], true);
 
   const academicYears    = academicYearsData?.results  || academicYearsData  || [];
   const semesterOptions  = semestersData?.results      || semestersData      || [];

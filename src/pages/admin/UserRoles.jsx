@@ -230,7 +230,7 @@ export default function UserRoles() {
     }),
     [filterAction, filterLogDate], activeTab === 'journal'
   );
-  const { data: sitesData, execute: refetchSites } = useApi(() => sitesService.getSites(), [], true);
+  const { data: sitesData, execute: refetchSites } = useApi(() => sitesService.getSites({ page_size: 500 }), [], true);
 
   const usersList = usersData?.results  || usersData  || [];
   const rolesList = rolesData?.results  || rolesData  || [];

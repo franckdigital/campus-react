@@ -68,21 +68,25 @@ export default function Students() {
 
   useEffect(() => {
     if (!formData.site_id) { setSitePrograms([]); return; }
-    academicService.getPrograms({ site: formData.site_id })
+    // page_size explicit — without it the API's default page size (20)
+    // silently cut off any filière beyond the first page, so a school with
+    // more than 20 filières (like ESCAM with 28) could never assign a
+    // student to the missing ones from this dropdown.
+    academicService.getPrograms({ site: formData.site_id, page_size: 500 })
       .then(d => setSitePrograms(d?.results || d || []))
       .catch(() => setSitePrograms([]));
   }, [formData.site_id]);
 
   useEffect(() => {
     if (!formData.program_id) { setSiteLevels([]); return; }
-    academicService.getLevels({ program: formData.program_id })
+    academicService.getLevels({ program: formData.program_id, page_size: 500 })
       .then(d => setSiteLevels(d?.results || d || []))
       .catch(() => setSiteLevels([]));
   }, [formData.program_id]);
 
   useEffect(() => {
     if (!formData.level_id || !formData.site_id) { setSiteClasses([]); return; }
-    academicService.getClasses({ level: formData.level_id, site: formData.site_id })
+    academicService.getClasses({ level: formData.level_id, site: formData.site_id, page_size: 500 })
       .then(d => setSiteClasses(d?.results || d || []))
       .catch(() => setSiteClasses([]));
   }, [formData.level_id, formData.site_id]);
@@ -99,10 +103,10 @@ export default function Students() {
     }),
     [searchTerm, filterStatus, filterProgram, selectedSite], true
   );
-  const { data: programs, execute: fetchPrograms } = useApi(() => academicService.getPrograms(), [], true);
-  const { data: levels, execute: fetchLevels } = useApi(() => academicService.getLevels(), [], true);
-  const { data: classes, execute: fetchClasses } = useApi(() => academicService.getClasses(), [], true);
-  const { data: academicYears } = useApi(() => academicService.getAcademicYears(), [], true);
+  const { data: programs, execute: fetchPrograms } = useApi(() => academicService.getPrograms({ page_size: 500 }), [], true);
+  const { data: levels, execute: fetchLevels } = useApi(() => academicService.getLevels({ page_size: 500 }), [], true);
+  const { data: classes, execute: fetchClasses } = useApi(() => academicService.getClasses({ page_size: 500 }), [], true);
+  const { data: academicYears } = useApi(() => academicService.getAcademicYears({ page_size: 500 }), [], true);
 
   const set = (key, val) => setFormData(p => ({ ...p, [key]: val }));
   const f = (key) => ({ value: formData[key], onChange: (e) => set(key, e.target.value) });

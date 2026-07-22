@@ -267,8 +267,8 @@ export default function VideoLibraryManager() {
   const { data: videosData, loading, refetch } = useApi(
     () => elearningService.getVideos(), []
   );
-  const { data: classesData } = useApi(() => academicService.getClasses(), []);
-  const { data: subjectsData } = useApi(() => academicService.getSubjects(), []);
+  const { data: classesData } = useApi(() => academicService.getClasses({ page_size: 500 }), []);
+  const { data: subjectsData } = useApi(() => academicService.getSubjects({ page_size: 500 }), []);
 
   const videos = videosData?.results ?? videosData ?? [];
   const classes = classesData?.results ?? classesData ?? [];
