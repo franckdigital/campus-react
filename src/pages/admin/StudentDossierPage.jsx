@@ -137,7 +137,7 @@ export default function StudentDossierPage() {
   const [configuredFees, setConfiguredFees] = useState({ tuition: 0 });
 
   const applyStudentResponse = (response, finSummary = null) => {
-    setStudent(response);
+    setStudent({ ...response, tuition_config_label: finSummary?.tuition_config_label ?? null });
     // Prefer finSummary's live, invoice-derived figures over the Student
     // model's stale snapshot columns (response.tuition_fee/total_paid/...),
     // which are never reconciled with actual invoices.
@@ -690,6 +690,9 @@ function InfoSection({ student, studentId, onUpdated }) {
           ) : (
             <InfoRow label="Classe actuelle" value={null} />
           )}
+          {/* Barème résolu automatiquement (niveau précis ou cycle entier,
+              ex: "tous les Licence 3") — informatif, non modifiable ici. */}
+          <InfoRow label="Barème appliqué" value={student.tuition_config_label} />
         </InfoCard>
 
         <InfoCard title="Adresse" color="#0891b2">
