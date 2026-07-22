@@ -299,6 +299,28 @@ export default function UserRoles() {
     } catch { alert('Erreur'); }
   }
 
+  // Permanent deletion — the backend cascades to the linked Student/Teacher/
+  // Parent profile and everything under it (enrollments, grades,
+  // attendance...) and refuses (400) if the user has any billing history
+  // (Invoice.student is on_delete=PROTECT), suggesting deactivation instead.
+  async function handleDeleteUser(user) {
+    const ok = await confirm({
+      title: 'Supprimer définitivement ce compte ?',
+      message: `Cette action est irréversible : ${user.first_name} ${user.last_name} et toutes les données liées `
+        + `(inscriptions, notes, présences...) seront supprimées. Si des factures existent, la suppression sera refusée — `
+        + `désactivez le compte dans ce cas.`,
+      confirmLabel: 'Supprimer définitivement',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await usersService.delete(user.id);
+      refetchUsers();
+    } catch (err) {
+      alert(err?.response?.data?.detail || err?.message || 'Erreur lors de la suppression');
+    }
+  }
+
   // ── Reset password ───────────────────────────────────────────────────────
   const [resetTarget, setResetTarget] = useState(null); // user object
   const [resetPasswordValue, setResetPasswordValue] = useState('');
@@ -751,6 +773,7 @@ export default function UserRoles() {
                                   <IconBtn onClick={() => { setResetTarget(user); setResetPasswordValue(''); setResetError(''); setResetDone(false); }}
                                            icon={KeyRound} color="#d97706" hoverBg="#fef3c7" title="Réinitialiser le mot de passe" />
                                   <IconBtn onClick={() => handleDeactivateUser(user)} icon={UserX} color="#ef4444" hoverBg="#fee2e2" title="Désactiver le compte" />
+                                  <IconBtn onClick={() => handleDeleteUser(user)} icon={Trash2} color="#991b1b" hoverBg="#fee2e2" title="Supprimer définitivement" />
                                 </div>
                               </td>
                             </tr>
