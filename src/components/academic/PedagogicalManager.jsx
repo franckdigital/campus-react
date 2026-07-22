@@ -91,20 +91,25 @@ export default function PedagogicalManager({ showHeader = true }) {
   const siteFilter = selectedSite !== 'all' ? { site: selectedSite } : {};
 
   /* ── data ── */
+  // page_size explicit everywhere here — without it, the API's default
+  // page size (20) silently truncated every one of these lists, making the
+  // admin UI look like there's a hard cap of 20 filières/niveaux/classes/
+  // matières and, worse, hiding existing rows so a "new" one could collide
+  // with an already-used code beyond page 1 (unique_together violation).
   const { data: programsData, loading: lprog, execute: reloadPrograms } =
-    useApi(() => academicService.getPrograms({ ...siteFilter }), [selectedSite], true);
+    useApi(() => academicService.getPrograms({ ...siteFilter, page_size: 500 }), [selectedSite], true);
   const { data: levelsData,   loading: llev,  execute: reloadLevels } =
     useApi(() => academicService.getLevels(
-      selectedSite !== 'all' ? { program__site: selectedSite } : {}
+      { ...(selectedSite !== 'all' ? { program__site: selectedSite } : {}), page_size: 500 }
     ), [selectedSite], true);
   const { data: classesData,  loading: lcls,  execute: reloadClasses } =
-    useApi(() => academicService.getClasses({ ...siteFilter }), [selectedSite], true);
-  const { data: sitesData }   = useApi(() => sitesService.getSites({ is_active: true }), [], true);
-  const { data: yearsData }   = useApi(() => academicService.getAcademicYears(), [], true);
+    useApi(() => academicService.getClasses({ ...siteFilter, page_size: 500 }), [selectedSite], true);
+  const { data: sitesData }   = useApi(() => sitesService.getSites({ is_active: true, page_size: 500 }), [], true);
+  const { data: yearsData }   = useApi(() => academicService.getAcademicYears({ page_size: 500 }), [], true);
   const { data: teachersData, execute: reloadTeachers } =
-    useApi(() => academicService.getTeachers({ is_active: true }), [], true);
+    useApi(() => academicService.getTeachers({ is_active: true, page_size: 500 }), [], true);
   const { data: subjectsData, execute: reloadSubjects } =
-    useApi(() => academicService.getSubjects({ is_active: true }), [], true);
+    useApi(() => academicService.getSubjects({ is_active: true, page_size: 500 }), [], true);
   const { data: studentsData, execute: reloadStudents } =
     useApi(() => studentsService.getAll({ ...siteFilter, page_size: 500 }), [selectedSite], true);
 
