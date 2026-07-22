@@ -58,6 +58,77 @@ function Input({ ...props }) {
   );
 }
 
+/* ── CLASS PICKER (searchable, single or multi-select) ────────────────────── */
+function ClassPicker({ classesList = [], value = [], onChange, multiple = false }) {
+  const [query, setQuery] = useState('');
+  const [openList, setOpenList] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function onDocClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpenList(false); }
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  const filtered = classesList.filter(c => c.name.toLowerCase().includes(query.toLowerCase()));
+  const selectedClasses = classesList.filter(c => value.includes(c.id));
+
+  function toggle(id) {
+    if (multiple) {
+      onChange(value.includes(id) ? value.filter(v => v !== id) : [...value, id]);
+    } else {
+      onChange([id]);
+      setOpenList(false);
+      setQuery('');
+    }
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      {multiple && selectedClasses.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {selectedClasses.map(c => (
+            <span key={c.id} className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg"
+                  style={{ background: '#fee2e2', color: C }}>
+              {c.name}
+              <button type="button" onClick={() => onChange(value.filter(v => v !== c.id))}
+                      className="hover:opacity-70" aria-label={`Retirer ${c.name}`}>
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input
+        value={openList ? query : (multiple ? '' : (selectedClasses[0]?.name || ''))}
+        onChange={e => { setQuery(e.target.value); setOpenList(true); }}
+        onFocus={() => { setOpenList(true); setQuery(''); }}
+        placeholder={multiple ? 'Rechercher une ou plusieurs classes…' : 'Rechercher une classe…'}
+        className="w-full px-3 py-2 rounded-xl text-sm border outline-none"
+        style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}
+      />
+      {openList && (
+        <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-xl border bg-white shadow-lg"
+             style={{ borderColor: '#e2e8f0' }}>
+          {filtered.length === 0 ? (
+            <p className="px-3 py-2 text-xs" style={{ color: '#94a3b8' }}>Aucune classe trouvée</p>
+          ) : filtered.map(c => {
+            const isSel = value.includes(c.id);
+            return (
+              <button type="button" key={c.id} onClick={() => toggle(c.id)}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-slate-50"
+                      style={{ color: '#1e293b' }}>
+                {c.name}
+                {isSel && <Check className="h-3.5 w-3.5" style={{ color: C }} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── QUESTION COUNTERS ───────────────────────────────────────────────────── */
 function QuestionCounters({ questions }) {
   const counts = {};
@@ -338,7 +409,7 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
   const loadedQuestionsRef = useRef('[]');
 
   const blank = {
-    title: '', description: '', class_obj: '', subject: '',
+    title: '', description: '', class_objs: [], subject: '',
     exam_type: 'FINAL', duration_minutes: 60, start_date: '', end_date: '',
     max_attempts: 1, pass_score_percent: 50, coefficient: 1,
     fullscreen_required: true, webcam_required: false,
@@ -355,7 +426,7 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
     if (editing) {
       setForm({
         ...blank, ...editing,
-        class_obj:  String(editing.class_obj || ''),
+        class_objs: editing.class_obj ? [String(editing.class_obj)] : [],
         subject:    String(editing.subject || ''),
         start_date: editing.start_date?.slice(0, 16) || '',
         end_date:   editing.end_date?.slice(0, 16) || '',
@@ -421,61 +492,21 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
       notify({ type: 'error', title: 'Date requise', message: 'Merci de renseigner la date de composition de l\'examen.' });
       return;
     }
+    if (form.class_objs.length === 0) {
+      notify({ type: 'error', title: 'Classe requise', message: 'Sélectionnez au moins une classe.' });
+      return;
+    }
     setLoading(true);
     try {
-      let quizId = editing?.quiz || null;
-
       // Skip re-persisting questions/choices entirely when the Questions tab
       // was never touched (e.g. a metadata-only edit from the Informations
       // tab) — this used to unconditionally re-save every question and every
       // choice one request at a time on every save, which is what made even
-      // trivial edits slow.
+      // trivial edits slow. Only relevant when editing a single existing exam.
       const questionsChanged = JSON.stringify(questions) !== loadedQuestionsRef.current;
 
-      // Persist inline questions (only if class + subject are set, required by Quiz model)
-      if (questions.length > 0 && form.class_obj && form.subject && questionsChanged) {
-        if (!quizId) {
-          const quiz = await elearningService.createQuiz({
-            title: `Quiz – ${form.title || 'Examen'}`,
-            class_obj: form.class_obj,
-            subject: form.subject,
-          });
-          quizId = quiz.id;
-        }
-        // Upsert questions — independent questions run in parallel instead of
-        // one sequential round-trip at a time.
-        await Promise.all(questions.map(async (q) => {
-          const isNew = String(q.id).startsWith('new-');
-          const payload = {
-            quiz: quizId,
-            question_type: q.question_type,
-            text: q.text,
-            points: q.points || 1,
-            time_limit: q.time_limit || 0,
-            model_answer: q.model_answer || '',
-          };
-          const savedQ = isNew
-            ? await elearningService.createQuestion(payload)
-            : await elearningService.updateQuestion(q.id, payload);
-          // Upsert choices — also parallelized, they don't depend on each other.
-          if (q.question_type !== 'TEXT') {
-            await Promise.all((q.choices || []).map(c => {
-              if (!c.text?.trim()) return null; // skip empty choices
-              const cPayload = { question: savedQ.id, text: c.text.trim(), is_correct: !!c.is_correct };
-              const isNewChoice = typeof c.id === 'string' && (c.id.startsWith('c') || c.id === 'vrai' || c.id === 'faux');
-              if (isNew || isNewChoice) {
-                return elearningService.createChoice(cPayload);
-              }
-              // Update existing choice text/is_correct if it has a real UUID id
-              return elearningService.updateChoice(c.id, cPayload).catch(() => {});
-            }));
-          }
-        }));
-      }
-
-      const payload = {
+      const basePayload = {
         ...form,
-        quiz: quizId,
         pdf_extra_duration: pdfDuration,
         start_date: form.start_date || null,
         end_date:   form.end_date || null,
@@ -484,26 +515,85 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
         duration_minutes: parseInt(form.duration_minutes) || 60,
         max_attempts: parseInt(form.max_attempts) || 1,
       };
+      delete basePayload.class_objs;
       // Never send subject_file as a string — the file is handled separately via FormData
-      delete payload.subject_file;
+      delete basePayload.subject_file;
 
-      let savedExam;
-      if (editing) {
-        savedExam = await elearningService.updateSecureExam(editing.id, payload);
-      } else {
-        savedExam = await elearningService.createSecureExam(payload);
-      }
-
-      // Upload PDF if selected (multipart PATCH with correct field name).
-      // The rest of the exam already saved fine at this point — a failure
-      // here must NOT be swallowed silently, or the admin sees a green
-      // "Examen modifié" toast while the student is left with no PDF at all
-      // and no clue why (see "Format d'examen non configuré" on their side).
       let pdfError = null;
-      if (examPdf && savedExam?.id) {
+
+      // Uploads the PDF (if any) to one already-saved exam; failures surface
+      // instead of being swallowed (see "Format d'examen non configuré").
+      const uploadPdfIfAny = async (examId) => {
+        if (!examPdf || !examId) return;
         const fd = new FormData();
         fd.append('subject_file', examPdf);
-        await elearningService.uploadSecureExamPdf(savedExam.id, fd).catch(err => { pdfError = err; });
+        await elearningService.uploadSecureExamPdf(examId, fd).catch(err => { pdfError = pdfError || err; });
+      };
+
+      if (editing) {
+        // Single row, single class — unchanged behaviour from before
+        // multi-class creation existed.
+        const classId = form.class_objs[0];
+        let quizId = editing?.quiz || null;
+
+        if (questions.length > 0 && classId && form.subject && questionsChanged) {
+          if (!quizId) {
+            const quiz = await elearningService.createQuiz({
+              title: `Quiz – ${form.title || 'Examen'}`, class_obj: classId, subject: form.subject,
+            });
+            quizId = quiz.id;
+          }
+          await Promise.all(questions.map(async (q) => {
+            const isNew = String(q.id).startsWith('new-');
+            const qPayload = {
+              quiz: quizId, question_type: q.question_type, text: q.text,
+              points: q.points || 1, time_limit: q.time_limit || 0, model_answer: q.model_answer || '',
+            };
+            const savedQ = isNew
+              ? await elearningService.createQuestion(qPayload)
+              : await elearningService.updateQuestion(q.id, qPayload);
+            if (q.question_type !== 'TEXT') {
+              await Promise.all((q.choices || []).map(c => {
+                if (!c.text?.trim()) return null;
+                const cPayload = { question: savedQ.id, text: c.text.trim(), is_correct: !!c.is_correct };
+                const isNewChoice = typeof c.id === 'string' && (c.id.startsWith('c') || c.id === 'vrai' || c.id === 'faux');
+                if (isNew || isNewChoice) return elearningService.createChoice(cPayload);
+                return elearningService.updateChoice(c.id, cPayload).catch(() => {});
+              }));
+            }
+          }));
+        }
+
+        const savedExam = await elearningService.updateSecureExam(editing.id, { ...basePayload, class_obj: classId, quiz: quizId });
+        await uploadPdfIfAny(savedExam?.id);
+      } else {
+        // Creation — same matière is often taught across several classes for
+        // the same filière, so one independent exam (with its own quiz/
+        // questions copy) is created per selected class instead of forcing
+        // the admin to redo this whole form once per class.
+        for (const classId of form.class_objs) {
+          let quizId = null;
+          if (questions.length > 0 && classId && form.subject) {
+            const quiz = await elearningService.createQuiz({
+              title: `Quiz – ${form.title || 'Examen'}`, class_obj: classId, subject: form.subject,
+            });
+            quizId = quiz.id;
+            await Promise.all(questions.map(async (q) => {
+              const savedQ = await elearningService.createQuestion({
+                quiz: quizId, question_type: q.question_type, text: q.text,
+                points: q.points || 1, time_limit: q.time_limit || 0, model_answer: q.model_answer || '',
+              });
+              if (q.question_type !== 'TEXT') {
+                await Promise.all((q.choices || []).map(c => {
+                  if (!c.text?.trim()) return null;
+                  return elearningService.createChoice({ question: savedQ.id, text: c.text.trim(), is_correct: !!c.is_correct });
+                }));
+              }
+            }));
+          }
+          const exam = await elearningService.createSecureExam({ ...basePayload, class_obj: classId, quiz: quizId });
+          await uploadPdfIfAny(exam?.id);
+        }
       }
 
       if (pdfError) {
@@ -513,7 +603,11 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
           message: pdfError.message || 'Réessayez d\'attacher le fichier depuis l\'onglet Épreuve PDF.',
         });
       } else {
-        notify({ type: 'success', title: editing ? 'Examen modifié' : 'Examen créé', message: '' });
+        notify({
+          type: 'success',
+          title: editing ? 'Examen modifié' : (form.class_objs.length > 1 ? `${form.class_objs.length} examens créés` : 'Examen créé'),
+          message: '',
+        });
       }
       onSaved();
       onClose();
@@ -597,13 +691,15 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
                           style={{ borderColor: '#e2e8f0', background: '#f8fafc' }} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div><Lbl>Classe</Lbl>
-                  <select value={form.class_obj} onChange={e => F('class_obj')(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl text-sm border outline-none"
-                          style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
-                    <option value="">Sélectionner…</option>
-                    {classesList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                <div>
+                  <Lbl>{editing ? 'Classe' : 'Classe(s)'}</Lbl>
+                  <ClassPicker classesList={classesList} value={form.class_objs}
+                               onChange={v => F('class_objs')(v)} multiple={!editing} />
+                  {!editing && (
+                    <p className="text-[10px] mt-1" style={{ color: '#94a3b8' }}>
+                      Sélectionnez plusieurs classes pour créer le même examen dans chacune d'elles.
+                    </p>
+                  )}
                 </div>
                 <div><Lbl>Matière</Lbl>
                   <select value={form.subject} onChange={e => F('subject')(e.target.value)}
