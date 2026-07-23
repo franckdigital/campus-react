@@ -3,9 +3,13 @@ import {
   Bold, Italic, Underline, List, ListOrdered, Superscript, Subscript, Eraser,
 } from 'lucide-react';
 
-// Common math symbols a student writing out a formula by hand would want —
-// deliberately not exhaustive, just the ones that don't exist on a keyboard.
-const SYMBOLS = ['√', '±', '×', '÷', '≤', '≥', '≠', '∞', 'π', 'Δ', '∑', '∫', '°', '½', '¼'];
+// Basic arithmetic first (some students look for these on the toolbar even
+// though they're on the keyboard — one less reason to go hunting for a key),
+// then the symbols that actually aren't on a standard keyboard.
+const SYMBOLS = [
+  '+', '-', '=', '(', ')', '/',
+  '√', '±', '×', '÷', '≤', '≥', '≠', '∞', 'π', 'Δ', '∑', '∫', '°', '½', '¼',
+];
 
 function ToolButton({ onClick, title, active, children }) {
   return (
