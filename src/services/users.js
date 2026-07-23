@@ -11,6 +11,16 @@ const qs = (params) => {
 };
 
 export const usersService = {
+  // ── Self-service (own account) ────────────────────────
+  getMe: () => api.get('/auth/me/'),
+  updateMe: (data) => api.patch('/auth/me/', data),
+  changeMyPassword: (oldPassword, newPassword, newPasswordConfirm) =>
+    api.post('/auth/change-password/', {
+      old_password: oldPassword,
+      new_password: newPassword,
+      new_password_confirm: newPasswordConfirm,
+    }),
+
   // ── Users ─────────────────────────────────────────────
   getAll: (params = {}) => api.get(`/auth/users/${qs(params)}`),
   getById: (id) => api.get(`/auth/users/${id}/`),
