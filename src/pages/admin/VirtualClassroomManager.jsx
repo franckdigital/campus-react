@@ -4,12 +4,14 @@ import {
   Video, Plus, Edit2, Trash2, Play, MessageSquare,
   HandMetal, BarChart2, Zap, X, Send,
   CheckCircle, Clock, ExternalLink, Loader, StopCircle,
-  Calendar, Users, Wifi,
+  Calendar, Users, Wifi, Globe,
 } from 'lucide-react';
 import useApi from '../../hooks/useApi';
 import elearningService from '../../services/elearning';
 import academicService from '../../services/academic';
+import sitesService from '../../services/sites';
 import { useConfirm } from '../../components/ConfirmDialog';
+import { useSite } from '../../contexts/SiteContext';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -332,6 +334,110 @@ function ClassroomModal({ classroom, classes = [], subjects = [], onClose, onSav
             <button onClick={save} disabled={saving} style={{ padding: '10px 24px', borderRadius: 12, border: 'none', background: saving ? '#a5b4fc' : 'linear-gradient(135deg,#4f46e5,#7c3aed)', fontSize: 13, fontWeight: 700, color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8, boxShadow: saving ? 'none' : '0 4px 14px rgba(99,102,241,0.35)' }}>
               {saving && <Loader size={14} className="animate-spin" />}
               {saving ? 'Enregistrement…' : isEdit ? 'Enregistrer les modifications' : 'Créer la session'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── SpontaneousModal ─────────────────────────────────────────────────────────
+// Creates an ad-hoc virtual class open to everyone (students, teachers, staff)
+// on a given site — no class/subject assignment needed, starts immediately.
+
+function SpontaneousModal({ sites = [], defaultSiteId, onClose, onCreated }) {
+  const [title, setTitle] = useState('Réunion spontanée');
+  const [siteId, setSiteId] = useState(defaultSiteId || '');
+  const [durationMinutes, setDurationMinutes] = useState(60);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const create = async () => {
+    if (!title.trim() || !siteId) {
+      setError('Titre et site sont requis.');
+      return;
+    }
+    setSaving(true); setError('');
+    try {
+      const created = await elearningService.createClassroom({
+        title: title.trim(),
+        provider: 'JITSI',
+        is_spontaneous: true,
+        site: siteId,
+        start_time: new Date().toISOString(),
+        duration_minutes: Number(durationMinutes) || 60,
+      });
+      onCreated(created);
+    } catch (e) {
+      setError(e.message || 'Erreur lors de la création.');
+    }
+    setSaving(false);
+  };
+
+  return createPortal(
+    <div
+      onClick={onClose}
+      className="p-2 sm:p-4"
+      style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(8,12,36,0.7)', backdropFilter: 'blur(12px)' }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background: '#fff', borderRadius: 24, width: '100%', maxWidth: 460, boxShadow: '0 32px 80px rgba(0,0,0,0.3)', overflow: 'hidden' }}
+      >
+        <div className="px-6 py-5" style={{ background: 'linear-gradient(135deg,#ea580c,#db2777)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Zap size={20} color="#fff" />
+            </div>
+            <div>
+              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Démarrage immédiat</p>
+              <h2 style={{ color: '#fff', fontSize: 17, fontWeight: 800, margin: 0 }}>Classe virtuelle spontanée</h2>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(255,255,255,0.15)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <X size={16} color="#fff" />
+          </button>
+        </div>
+
+        <div className="p-6" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <p style={{ fontSize: 12.5, color: '#64748b', margin: 0, lineHeight: 1.5, background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 12, padding: '10px 14px' }}>
+            Ouverte à tous — étudiants, enseignants et personnel administratif du site choisi pourront la rejoindre immédiatement, sans inscription préalable à une classe.
+          </p>
+
+          <div>
+            <FieldLabel required>Titre</FieldLabel>
+            <FocusInput value={title} onChange={e => setTitle(e.target.value)} placeholder="Ex: Réunion générale" />
+          </div>
+
+          <div>
+            <FieldLabel required>Site</FieldLabel>
+            <select value={siteId} onChange={e => setSiteId(e.target.value)} style={{ ...INPUT_BASE, cursor: 'pointer' }}>
+              <option value="">Sélectionner un site…</option>
+              {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <FieldLabel>Durée (minutes)</FieldLabel>
+            <FocusInput type="number" min={15} max={480} value={durationMinutes}
+              onChange={e => setDurationMinutes(parseInt(e.target.value) || 60)} />
+          </div>
+
+          {error && (
+            <div style={{ padding: '10px 14px', borderRadius: 12, background: '#fef2f2', border: '1.5px solid #fca5a5', fontSize: 13, color: '#b91c1c' }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button onClick={onClose} style={{ padding: '10px 20px', borderRadius: 12, border: '1.5px solid #e2e8f0', background: '#fff', fontSize: 13, fontWeight: 600, color: '#64748b', cursor: 'pointer' }}>
+              Annuler
+            </button>
+            <button onClick={create} disabled={saving} style={{ padding: '10px 24px', borderRadius: 12, border: 'none', background: saving ? '#fdba74' : 'linear-gradient(135deg,#ea580c,#db2777)', fontSize: 13, fontWeight: 700, color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+              {saving && <Loader size={14} className="animate-spin" />}
+              {saving ? 'Démarrage…' : 'Démarrer maintenant'}
             </button>
           </div>
         </div>
@@ -703,12 +809,23 @@ function ClassroomCard({ cr, onOpen, onChat, onEdit, onDelete, onEnd }) {
         {/* Title + meta */}
         <div style={{ flex: 1 }}>
           <p style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', margin: '0 0 4px', lineHeight: 1.35 }}>{cr.title}</p>
-          <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 8px', fontWeight: 500 }}>{cr.class_name || '—'} · {cr.subject_name || '—'}</p>
+          <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 8px', fontWeight: 500 }}>
+            {cr.is_spontaneous ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Globe size={11} /> Ouverte à tous — {cr.site_name || 'tous les sites'}
+              </span>
+            ) : (
+              `${cr.class_name || '—'} · ${cr.subject_name || '—'}`
+            )}
+          </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8', fontWeight: 500 }}>
               <Calendar size={10} /> {dateStr} {timeStr && `· ${timeStr}`}
             </span>
             <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 99, background: prov.color, color: prov.text }}>{prov.label}</span>
+            {cr.is_spontaneous && (
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: '#ffedd5', color: '#9a3412' }}>Spontanée</span>
+            )}
             <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500 }}>{cr.duration_minutes} min</span>
             {cr.polls_count > 0 && <span style={{ fontSize: 11, color: '#94a3b8' }}>{cr.polls_count} sondage{cr.polls_count > 1 ? 's' : ''}</span>}
           </div>
@@ -735,11 +852,13 @@ function ClassroomCard({ cr, onOpen, onChat, onEdit, onDelete, onEnd }) {
               <StopCircle size={14} />
             </button>
           )}
-          <button onClick={onEdit} title="Modifier" style={{ width: 34, height: 34, borderRadius: 10, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', color: '#64748b', flexShrink: 0 }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#dbeafe'; e.currentTarget.style.color = '#2563eb'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = '#64748b'; }}>
-            <Edit2 size={13} />
-          </button>
+          {!cr.is_spontaneous && (
+            <button onClick={onEdit} title="Modifier" style={{ width: 34, height: 34, borderRadius: 10, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', color: '#64748b', flexShrink: 0 }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#dbeafe'; e.currentTarget.style.color = '#2563eb'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = '#64748b'; }}>
+              <Edit2 size={13} />
+            </button>
+          )}
           <button onClick={onDelete} title="Supprimer" style={{ width: 34, height: 34, borderRadius: 10, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff1f2', color: '#f43f5e', flexShrink: 0 }}
             onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#ef4444'; }}
             onMouseLeave={e => { e.currentTarget.style.background = '#fff1f2'; e.currentTarget.style.color = '#f43f5e'; }}>
@@ -758,9 +877,11 @@ export default function VirtualClassroomManager({ classesList, subjectsList } = 
   const [filterProvider, setFilterProvider] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [spontaneousOpen, setSpontaneousOpen] = useState(false);
   const [liveClassroom, setLiveClassroom] = useState(null);
   const [chatClassroom, setChatClassroom] = useState(null);
   const confirm = useConfirm();
+  const { sites, selectedSite } = useSite();
 
   // Blocks any onChange fired by browser autofill for 700ms after modal closes
   const blockSearchRef = useRef(false);
@@ -829,11 +950,18 @@ export default function VirtualClassroomManager({ classesList, subjectsList } = 
           <h1 style={{ fontSize: 24, fontWeight: 800, color: '#0f172a', margin: 0 }}>Classes virtuelles</h1>
           <p style={{ fontSize: 13, color: '#64748b', marginTop: 4, marginBottom: 0 }}>Gérez vos sessions d'apprentissage en direct</p>
         </div>
-        <button
-          onClick={() => { setEditing(null); setModalOpen(true); }}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, boxShadow: '0 4px 14px rgba(99,102,241,0.35)' }}>
-          <Plus size={15} /> Nouvelle session
-        </button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
+          <button
+            onClick={() => setSpontaneousOpen(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,#ea580c,#db2777)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(234,88,12,0.35)' }}>
+            <Zap size={15} /> Classe virtuelle spontanée
+          </button>
+          <button
+            onClick={() => { setEditing(null); setModalOpen(true); }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(99,102,241,0.35)' }}>
+            <Plus size={15} /> Nouvelle session
+          </button>
+        </div>
       </div>
 
       {/* Live banner */}
@@ -924,6 +1052,18 @@ export default function VirtualClassroomManager({ classesList, subjectsList } = 
           subjects={subjects}
           onClose={() => closeModal(false)}
           onSaved={() => closeModal(true)}
+        />
+      )}
+      {spontaneousOpen && (
+        <SpontaneousModal
+          sites={sites}
+          defaultSiteId={selectedSite !== 'all' ? selectedSite : (sites[0]?.id || '')}
+          onClose={() => setSpontaneousOpen(false)}
+          onCreated={(created) => {
+            setSpontaneousOpen(false);
+            refetch();
+            setLiveClassroom(created);
+          }}
         />
       )}
       {liveClassroom && <LivePanel classroom={liveClassroom} onClose={() => setLiveClassroom(null)} />}
