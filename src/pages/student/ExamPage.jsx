@@ -3,12 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Shield, ShieldAlert, AlertTriangle, AlertCircle, Clock, ChevronRight, CheckCircle, XCircle, Send,
   Camera, CameraOff, Play, RotateCcw, FileText,
-  ChevronLeft, Award, Star, Target, BookOpen, Lock, Eye, LogOut,
+  ChevronLeft, Award, Star, Target, BookOpen, Lock, Eye, LogOut, Calculator as CalculatorIcon,
 } from 'lucide-react';
 import elearningService from '../../services/elearning';
 import { analyzeFrame, preloadProctoringModels } from '../../utils/examProctoring';
 import { useAuth } from '../../context/AuthContext';
 import PdfModal from '../../components/exam/PdfModal';
+import RichTextEditor from '../../components/exam/RichTextEditor';
+import CalculatorWidget from '../../components/exam/CalculatorWidget';
 
 /* ── constants ───────────────────────────────────────────────────────────── */
 const LOG_COOLDOWN      = 3000;
@@ -390,20 +392,33 @@ function WebcamMonitor({ examId, sessionId, enabled, onFlag, onFraudBlock, onGaz
 // whatever's in content as a safety net (idempotent), but a student
 // shouldn't have to trust a silent background save for something they spent
 // time writing.
+//
+// The rich-text editor + built-in calculator below exist for the same
+// anti-cheat reason as the missing file-upload mode: a physical calculator
+// held up to the webcam is indistinguishable from a phone to the proctoring
+// object-detector (see examProctoring.js's PHONE_LABELS/nearFace heuristics),
+// and alt-tabbing to an OS calculator app is itself read as a tab switch.
+// Giving students a calculator that lives inside this same page sidesteps
+// both false-positive paths entirely, instead of trying to teach the model
+// to "recognize" a calculator, which isn't reliable.
 function PdfAnswerSection({ sessionId, content, setContent, error }) {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [sendError, setSendError] = useState('');
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
   const sentTimer = useRef(null);
+  const editorRef = useRef(null);
+
+  const plainText = content.replace(/<[^>]*>/g, '').trim();
 
   const handleSend = async () => {
-    if (!content.trim()) { setSendError('Rédigez une réponse avant d\'envoyer.'); return; }
+    if (!plainText) { setSendError('Rédigez une réponse avant d\'envoyer.'); return; }
     if (!sessionId) { setSendError('Session introuvable — réessayez dans quelques secondes.'); return; }
     setSendError('');
     setSending(true);
     try {
       const fd = new FormData();
-      fd.append('note', content.trim());
+      fd.append('note', content);
       await elearningService.submitExamFile(sessionId, fd);
       setSent(true);
       clearTimeout(sentTimer.current);
@@ -417,18 +432,27 @@ function PdfAnswerSection({ sessionId, content, setContent, error }) {
 
   return (
     <div className="rounded-2xl p-5 space-y-4 h-full" style={{ background: 'white', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
-      <div>
-        <h2 className="text-sm font-black" style={{ color: '#1e293b' }}>Votre réponse au sujet PDF</h2>
-        <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>
-          Rédigez votre réponse ci-dessous, puis cliquez sur « Envoyer ». Vous pouvez la modifier et la
-          renvoyer autant de fois que nécessaire jusqu'à la soumission finale de l'examen.
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-sm font-black" style={{ color: '#1e293b' }}>Votre réponse au sujet PDF</h2>
+          <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>
+            Rédigez votre réponse ci-dessous, puis cliquez sur « Envoyer ». Vous pouvez la modifier et la
+            renvoyer autant de fois que nécessaire jusqu'à la soumission finale de l'examen.
+          </p>
+        </div>
+        <button onClick={() => setCalculatorOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold flex-shrink-0"
+          style={{ background: '#ede9fe', color: '#6d28d9' }}>
+          <CalculatorIcon className="h-3.5 w-3.5" /> Calculatrice
+        </button>
       </div>
 
-      <textarea value={content} onChange={e => { setContent(e.target.value); setSent(false); }} rows={14}
-                placeholder="Rédigez votre réponse ici..."
-                className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
-                style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', color: '#374151', lineHeight: '1.6' }} />
+      <RichTextEditor
+        ref={editorRef}
+        initialValue={content}
+        onChange={html => { setContent(html); setSent(false); }}
+        placeholder="Rédigez votre réponse ici..."
+      />
 
       {(sendError || error) && (
         <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: '#fef2f2' }}>
@@ -445,6 +469,13 @@ function PdfAnswerSection({ sessionId, content, setContent, error }) {
           : sent ? <CheckCircle className="h-4 w-4" /> : <Send className="h-4 w-4" />}
         {sending ? 'Envoi en cours…' : sent ? 'Réponse envoyée ✓' : 'Envoyer ma réponse'}
       </button>
+
+      {calculatorOpen && (
+        <CalculatorWidget
+          onClose={() => setCalculatorOpen(false)}
+          onInsert={text => { editorRef.current?.insertText(text); setSent(false); }}
+        />
+      )}
     </div>
   );
 }
