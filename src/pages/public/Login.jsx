@@ -267,9 +267,6 @@ export default function Login() {
               <br />
               <span style={{ color: '#a5b4fc' }}>réinventée.</span>
             </h2>
-            <p className="text-base leading-relaxed mb-8" style={{ color: 'rgba(255,255,255,0.6)', maxWidth: '380px' }}>
-              Pilotez votre établissement avec une plateforme tout-en-un, conçue pour les universités modernes d'Afrique de l'Ouest.
-            </p>
 
             {/* Features */}
             <div className="space-y-3 mb-10">
@@ -280,21 +277,6 @@ export default function Login() {
                     <CheckCircle className="h-3 w-3" style={{ color: '#a5b4fc' }} />
                   </div>
                   <span className="text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>{f}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-4">
-              {[
-                { value: '2,500+', label: 'Étudiants' },
-                { value: '150+', label: 'Enseignants' },
-                { value: '95%', label: 'Satisfaction' },
-              ].map((s, i) => (
-                <div key={i} className="text-center p-4 rounded-2xl"
-                     style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                  <p className="text-2xl font-bold text-white">{s.value}</p>
-                  <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.45)' }}>{s.label}</p>
                 </div>
               ))}
             </div>
