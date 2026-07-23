@@ -336,9 +336,10 @@ export default function UserRoles() {
     }
   }
 
-  // ── Reset password ───────────────────────────────────────────────────────
+  // ── Reset password (+ phone, editable from the same screen) ──────────────
   const [resetTarget, setResetTarget] = useState(null); // user object
   const [resetPasswordValue, setResetPasswordValue] = useState('');
+  const [resetPhoneValue, setResetPhoneValue] = useState('');
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState('');
   const [resetDone, setResetDone] = useState(false);
@@ -346,17 +347,31 @@ export default function UserRoles() {
   function closeResetModal() {
     setResetTarget(null);
     setResetPasswordValue('');
+    setResetPhoneValue('');
     setResetError('');
     setResetDone(false);
   }
 
   async function handleResetUserPassword(e) {
     e.preventDefault();
-    if (!resetTarget || resetPasswordValue.length < 6) return;
+    if (!resetTarget) return;
+    const wantsPasswordChange = resetPasswordValue.length > 0;
+    const wantsPhoneChange = resetPhoneValue.trim() !== (resetTarget.phone || '');
+    if (wantsPasswordChange && resetPasswordValue.length < 6) {
+      setResetError('Le mot de passe doit contenir au moins 6 caractères.');
+      return;
+    }
+    if (!wantsPasswordChange && !wantsPhoneChange) {
+      setResetError('Renseignez un nouveau mot de passe ou un nouveau numéro de téléphone.');
+      return;
+    }
     setResetting(true);
     setResetError('');
     try {
-      await usersService.resetPassword(resetTarget.id, resetPasswordValue);
+      const tasks = [];
+      if (wantsPasswordChange) tasks.push(usersService.resetPassword(resetTarget.id, resetPasswordValue));
+      if (wantsPhoneChange) tasks.push(usersService.update(resetTarget.id, { phone: resetPhoneValue.trim() }));
+      await Promise.all(tasks);
       setResetDone(true);
     } catch (err) {
       setResetError(err?.response?.data?.detail || 'Erreur lors de la réinitialisation');
@@ -792,8 +807,8 @@ export default function UserRoles() {
                                   <IconBtn onClick={() => openEditUser(user)} icon={Edit} color="#2563eb" hoverBg="#dbeafe" title="Modifier" />
                                   <IconBtn onClick={() => { setAssignModal(user.id); setAssignRoleId(''); setAssignSiteId(''); }}
                                            icon={UserCheck} color={COLOR} hoverBg={COLOR_IC} title="Assigner un rôle" />
-                                  <IconBtn onClick={() => { setResetTarget(user); setResetPasswordValue(''); setResetError(''); setResetDone(false); }}
-                                           icon={KeyRound} color="#d97706" hoverBg="#fef3c7" title="Réinitialiser le mot de passe" />
+                                  <IconBtn onClick={() => { setResetTarget(user); setResetPasswordValue(''); setResetPhoneValue(user.phone || ''); setResetError(''); setResetDone(false); }}
+                                           icon={KeyRound} color="#d97706" hoverBg="#fef3c7" title="Téléphone & mot de passe" />
                                   <IconBtn onClick={() => handleDeactivateUser(user)} icon={UserX} color="#ef4444" hoverBg="#fee2e2" title="Désactiver le compte" />
                                   <IconBtn onClick={() => handleDeleteUser(user)} icon={Trash2} color="#991b1b" hoverBg="#fee2e2" title="Supprimer définitivement" />
                                 </div>
@@ -1126,7 +1141,7 @@ export default function UserRoles() {
 
       {/* ── MODAL: Reset password ────────────────────────────────────────── */}
       <ModalShell open={!!resetTarget} onClose={closeResetModal} size="sm"
-        title={resetDone ? 'Mot de passe réinitialisé' : 'Réinitialiser le mot de passe'}
+        title={resetDone ? 'Informations mises à jour' : 'Téléphone & mot de passe'}
         subtitle={resetTarget ? `${resetTarget.first_name} ${resetTarget.last_name} (${resetTarget.email})` : ''}>
         {resetDone ? (
           <div className="flex flex-col items-center text-center py-4 gap-3">
@@ -1134,7 +1149,7 @@ export default function UserRoles() {
               <CheckCircle className="h-7 w-7" style={{ color: '#059669' }} />
             </div>
             <p className="text-sm font-semibold" style={{ color: '#0f172a' }}>
-              Le mot de passe de {resetTarget?.first_name} {resetTarget?.last_name} a été réinitialisé avec succès.
+              Les informations de {resetTarget?.first_name} {resetTarget?.last_name} ont été mises à jour avec succès.
             </p>
             <button onClick={closeResetModal}
               className="mt-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white transition-all"
@@ -1144,10 +1159,14 @@ export default function UserRoles() {
           </div>
         ) : (
           <form onSubmit={handleResetUserPassword} className="space-y-4">
-            <Field label="Nouveau mot de passe" required>
-              <input type="text" className={`${inp} font-mono`} placeholder="Min. 6 caractères"
+            <Field label="Numéro de téléphone">
+              <input type="text" className={inp} placeholder="Ex: 0777560842"
+                value={resetPhoneValue} onChange={e => setResetPhoneValue(e.target.value)} />
+            </Field>
+            <Field label="Nouveau mot de passe">
+              <input type="text" className={`${inp} font-mono`} placeholder="Laisser vide pour ne pas changer"
                 value={resetPasswordValue} onChange={e => setResetPasswordValue(e.target.value)}
-                minLength={6} required />
+                minLength={6} />
             </Field>
             {resetError && (
               <div className="px-3 py-2.5 rounded-xl text-xs font-medium flex items-center gap-2"
@@ -1156,7 +1175,7 @@ export default function UserRoles() {
                 {resetError}
               </div>
             )}
-            <FooterBtns onCancel={closeResetModal} submitLabel={resetting ? 'En cours…' : 'Réinitialiser'} loading={resetting} color="#d97706" />
+            <FooterBtns onCancel={closeResetModal} submitLabel={resetting ? 'En cours…' : 'Enregistrer'} loading={resetting} color="#d97706" />
           </form>
         )}
       </ModalShell>

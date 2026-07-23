@@ -91,10 +91,10 @@ export default function Login() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Email */}
+            {/* Email or phone */}
             <div>
               <label className="block text-sm font-semibold mb-2" style={{ color: '#374151' }}>
-                Adresse email
+                Email ou téléphone
               </label>
               <div className="relative">
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 h-8 w-8 rounded-lg flex items-center justify-center"
@@ -102,11 +102,11 @@ export default function Login() {
                   <Mail className="h-4 w-4" style={{ color: '#6366f1' }} />
                 </div>
                 <input
-                  type="email"
+                  type="text"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  placeholder="vous@campus.edu"
+                  placeholder="vous@campus.edu ou 0777560842"
                   className="input-field"
                   style={{ paddingLeft: '3.5rem' }}
                 />
