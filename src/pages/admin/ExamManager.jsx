@@ -10,6 +10,7 @@ import { elearningService } from '../../services';
 import { useApi } from '../../hooks/useApi';
 import { IconBtn, Pagination } from '../../components/ui/PageHeader';
 import { useConfirm } from '../../components/ConfirmDialog';
+import PdfModal from '../../components/exam/PdfModal';
 
 /* ── tokens ──────────────────────────────────────────────────────────────── */
 const C = '#ef4444';
@@ -325,6 +326,7 @@ function QuestionEditor({ question, onChange, onDelete, idx }) {
 
 /* ── PDF UPLOAD SECTION ──────────────────────────────────────────────────── */
 function PdfSection({ examPdf, examPdfUrl, onFileChange, pdfDuration, onPdfDurationChange }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
   const inputRef = useRef();
   return (
     <div className="space-y-5">
@@ -380,7 +382,18 @@ function PdfSection({ examPdf, examPdfUrl, onFileChange, pdfDuration, onPdfDurat
             </>
           )}
         </div>
+
+        {/* View the currently-saved PDF — only when no replacement is queued */}
+        {examPdfUrl && !examPdf && (
+          <button type="button" onClick={() => setPreviewOpen(true)}
+            className="mt-3 flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold w-full justify-center"
+            style={{ background: '#f5f3ff', color: '#7c3aed', border: '1.5px solid #7c3aed33' }}>
+            <Eye className="h-3.5 w-3.5" /> Voir le fichier PDF actuellement publié
+          </button>
+        )}
       </div>
+
+      {previewOpen && <PdfModal url={examPdfUrl} onClose={() => setPreviewOpen(false)} />}
 
       {/* Extra duration for PDF */}
       <div>
