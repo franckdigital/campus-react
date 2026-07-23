@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GraduationCap, Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, CheckCircle } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 const features = [
@@ -65,11 +65,8 @@ export default function Login() {
 
           {/* Logo mobile */}
           <div className="flex items-center gap-3 mb-10 lg:hidden">
-            <div className="h-10 w-10 rounded-2xl flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
-              <GraduationCap className="h-5 w-5 text-white" />
-            </div>
-            <span className="text-xl font-bold" style={{ color: '#0f172a' }}>CampusLMS</span>
+            <img src="/logo.png" alt="ESCAM" className="h-10 w-10 object-contain" />
+            <span className="text-xl font-bold" style={{ color: '#0f172a' }}>ESCAM</span>
           </div>
 
           <div className="mb-8">
@@ -210,7 +207,7 @@ export default function Login() {
 
           {/* Footer */}
           <p className="text-center text-xs mt-8" style={{ color: '#94a3b8' }}>
-            © 2025 CampusLMS — Tous droits réservés
+            © 2025 ESCAM — Tous droits réservés
           </p>
         </div>
       </div>
@@ -246,10 +243,10 @@ export default function Login() {
           <div className="flex items-center gap-3">
             <div className="h-11 w-11 rounded-2xl flex items-center justify-center"
                  style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)' }}>
-              <GraduationCap className="h-6 w-6 text-white" />
+              <img src="/logo.png" alt="ESCAM" className="h-7 w-7 object-contain" />
             </div>
             <div>
-              <span className="text-lg font-bold text-white tracking-tight">CampusLMS</span>
+              <span className="text-lg font-bold text-white tracking-tight">ESCAM</span>
               <p className="text-xs" style={{ color: 'rgba(255,255,255,0.45)', letterSpacing: '0.1em' }}>MANAGEMENT SYSTEM</p>
             </div>
           </div>

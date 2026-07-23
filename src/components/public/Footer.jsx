@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { GraduationCap, Mail, Phone, MapPin, Facebook, Twitter, Instagram, Linkedin } from 'lucide-react';
+import { Mail, Phone, MapPin, Facebook, Twitter, Instagram, Linkedin } from 'lucide-react';
 
 export default function Footer() {
   return (
@@ -9,10 +9,8 @@ export default function Footer() {
           {/* Brand */}
           <div>
             <Link to="/" className="flex items-center gap-3 mb-6">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                <GraduationCap className="h-6 w-6 text-white" />
-              </div>
-              <span className="text-xl font-bold">CampusLMS</span>
+              <img src="/logo.png" alt="ESCAM" className="h-10 w-10 object-contain" />
+              <span className="text-xl font-bold">ESCAM</span>
             </Link>
             <p className="text-gray-400 mb-6">
               Plateforme de gestion universitaire moderne pour les établissements d'enseignement supérieur.
@@ -63,15 +61,19 @@ export default function Footer() {
             <ul className="space-y-4">
               <li className="flex items-start gap-3">
                 <MapPin className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                <span className="text-gray-400">Abidjan, Côte d'Ivoire<br />Cocody, Riviera 2</span>
+                <span className="text-gray-400">Cité des Arts, Cocody<br />Boulevard André Latrille<br />Abidjan – Côte d'Ivoire</span>
               </li>
-              <li className="flex items-center gap-3">
-                <Phone className="h-5 w-5 text-blue-500 flex-shrink-0" />
-                <span className="text-gray-400">+225 07 00 00 00</span>
+              <li className="flex items-start gap-3">
+                <Phone className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                <span className="text-gray-400">
+                  +225 07 58 97 27 40<br />
+                  +225 07 07 33 60 50<br />
+                  +225 07 08 39 91 31
+                </span>
               </li>
               <li className="flex items-center gap-3">
                 <Mail className="h-5 w-5 text-blue-500 flex-shrink-0" />
-                <span className="text-gray-400">contact@campuslms.ci</span>
+                <span className="text-gray-400">contact@escam.net</span>
               </li>
             </ul>
           </div>
@@ -83,7 +85,7 @@ export default function Footer() {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-gray-400 text-sm">
-              © 2025 CampusLMS. Tous droits réservés.
+              © 2025 ESCAM. Tous droits réservés.
             </p>
             <div className="flex items-center gap-6 text-sm">
               <Link to="#" className="text-gray-400 hover:text-white transition-colors">Conditions</Link>

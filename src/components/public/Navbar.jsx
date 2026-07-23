@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Menu, X, GraduationCap, ChevronDown, ArrowLeftRight } from 'lucide-react';
+import { Menu, X, ChevronDown, ArrowLeftRight } from 'lucide-react';
 
 export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -11,10 +11,8 @@ export default function Navbar() {
         <div className="flex h-20 items-center justify-between">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
-              <GraduationCap className="h-6 w-6 text-white" />
-            </div>
-            <span className="text-xl font-bold text-gray-900">CampusLMS</span>
+            <img src="/logo.png" alt="ESCAM" className="h-10 w-10 object-contain" />
+            <span className="text-xl font-bold text-gray-900">ESCAM</span>
           </Link>
 
           {/* Desktop navigation */}
@@ -46,7 +44,7 @@ export default function Navbar() {
 
           {/* CTA buttons */}
           <div className="hidden lg:flex lg:items-center lg:gap-4">
-            <Link to="/escam" className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-blue-600 transition-colors">
+            <Link to="/" className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-blue-600 transition-colors">
               <ArrowLeftRight className="h-3.5 w-3.5" />
               Vitrine ESCAM
             </Link>
@@ -83,7 +81,7 @@ export default function Navbar() {
               <Link to="#" className="block px-4 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Contact</Link>
             </div>
             <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
-              <Link to="/escam" className="flex items-center justify-center gap-1.5 px-4 py-2 text-center text-gray-500 hover:bg-gray-50 rounded-lg text-sm">
+              <Link to="/" className="flex items-center justify-center gap-1.5 px-4 py-2 text-center text-gray-500 hover:bg-gray-50 rounded-lg text-sm">
                 <ArrowLeftRight className="h-3.5 w-3.5" />
                 Vitrine ESCAM
               </Link>
