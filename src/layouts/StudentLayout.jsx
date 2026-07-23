@@ -3,7 +3,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   GraduationCap, LayoutDashboard, BookOpen, CheckSquare, Layers,
   FileText, DollarSign, Calendar, MessageSquare, Film,
-  LogOut, Menu, X, ChevronDown, FlaskConical, Library, Bot, BookMarked
+  LogOut, Menu, X, ChevronDown, FlaskConical, Library, Bot, BookMarked, UserCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
@@ -170,6 +170,13 @@ export default function StudentLayout() {
                 <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
                 <div className="absolute right-0 top-full mt-2 w-48 rounded-xl overflow-hidden z-50"
                      style={{ background: '#fff', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid #f1f5f9' }}>
+                  <Link to="/student/profile" onClick={() => setUserMenuOpen(false)}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium transition-colors"
+                    style={{ color: '#374151' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+                    <UserCircle className="h-4 w-4" style={{ color: '#db2777' }} /> Mon profil
+                  </Link>
                   <button onClick={() => { setUserMenuOpen(false); handleLogout(); }}
                     className="w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium transition-colors"
                     style={{ color: '#ef4444' }}

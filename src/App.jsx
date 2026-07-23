@@ -44,6 +44,7 @@ import StudentVirtualLabs from './pages/student/StudentVirtualLabs';
 import StudentLibrary from './pages/student/StudentLibrary';
 import StudentAITutor from './pages/student/StudentAITutor';
 import StudentELearning from './pages/student/StudentELearning';
+import StudentProfile from './pages/student/StudentProfile';
 import StudentHub from './pages/student/StudentHub';
 import FeeGate from './components/FeeGate';
 import Home from './pages/public/Home';
@@ -155,6 +156,7 @@ function App() {
           <Route path="labs" element={<StudentVirtualLabs />} />
           <Route path="library" element={<StudentLibrary />} />
           <Route path="elearning" element={<StudentELearning />} />
+          <Route path="profile" element={<StudentProfile />} />
           <Route path="ai-tutor" element={<StudentAITutor />} />
           <Route path="quiz/:quizId" element={<StudentQuizPage />} />
           <Route path="exams/:examId" element={<ExamPage />} />
