@@ -147,7 +147,7 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Demo accounts */}
+            {/* Demo accounts
             <div className="rounded-2xl p-3.5" style={{ background: '#f8fafc', border: '1px solid #f1f5f9' }}>
               <p className="text-[10px] font-bold uppercase tracking-widest mb-2.5" style={{ color: '#94a3b8' }}>
                 Comptes démo — cliquez pour remplir
@@ -173,6 +173,7 @@ export default function Login() {
                 ))}
               </div>
             </div>
+            */}
 
             {/* Remember me */}
             <label className="flex items-center gap-3 cursor-pointer">

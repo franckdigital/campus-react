@@ -358,11 +358,20 @@ function StudentChatPanel({ classroom, onClose }) {
 function VirtualClassroomsTab({ classId }) {
   const [liveRoom, setLiveRoom] = useState(null);
   const [chatRoom, setChatRoom] = useState(null);
+  // Spontaneous sessions aren't tied to a class — fetched separately and
+  // merged in so students see them alongside their own class's sessions.
   const { data, loading, refetch } = useApi(
-    () => classId ? elearningService.getClassrooms({ class_obj: classId, page_size: 50 }) : Promise.resolve({ results: [] }),
-    [classId], !!classId
+    () => Promise.all([
+      classId ? elearningService.getClassrooms({ class_obj: classId, page_size: 50 }) : Promise.resolve({ results: [] }),
+      elearningService.getClassrooms({ is_spontaneous: true, page_size: 50 }),
+    ]),
+    [classId], true
   );
-  const classrooms = (data?.results ?? data ?? []).slice().sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
+  const [classData, spontaneousData] = data || [];
+  const classrooms = [
+    ...(classData?.results ?? classData ?? []),
+    ...(spontaneousData?.results ?? spontaneousData ?? []),
+  ].sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
 
   useEffect(() => {
     const i = setInterval(refetch, 30000);
