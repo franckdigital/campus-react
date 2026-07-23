@@ -13,7 +13,7 @@ export default function Footer() {
               <span className="text-xl font-bold">ESCAM</span>
             </Link>
             <p className="text-gray-400 mb-6">
-              Plateforme de gestion universitaire moderne pour les établissements d'enseignement supérieur.
+              Plateforme de gestion universitaire moderne.
             </p>
             <div className="flex items-center gap-4">
               <a href="#" className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-colors">
@@ -73,7 +73,7 @@ export default function Footer() {
               </li>
               <li className="flex items-center gap-3">
                 <Mail className="h-5 w-5 text-blue-500 flex-shrink-0" />
-                <span className="text-gray-400">contact@escam.net</span>
+                <span className="text-gray-400">info@escam.net</span>
               </li>
             </ul>
           </div>
