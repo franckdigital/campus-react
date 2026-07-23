@@ -373,6 +373,7 @@ export default function UserRoles() {
       if (wantsPhoneChange) tasks.push(usersService.update(resetTarget.id, { phone: resetPhoneValue.trim() }));
       await Promise.all(tasks);
       setResetDone(true);
+      refetchUsers(); // so the table (and this modal, if reopened) shows the new phone right away
     } catch (err) {
       setResetError(err?.response?.data?.detail || 'Erreur lors de la réinitialisation');
     } finally {
