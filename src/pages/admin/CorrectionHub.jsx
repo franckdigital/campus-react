@@ -1,4 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
+import DOMPurify from 'dompurify';
 import {
   ClipboardList, ClipboardCheck, Shield, Download, Upload, Star,
   CheckCircle, Clock, ChevronDown, ChevronUp, FileText, Award,
@@ -1118,9 +1119,18 @@ function ExamSessionRow({ session: s, exam, notify, onGraded }) {
                   Réponse rédigée dans le système
                 </span>
               </div>
-              <div className="px-4 py-3 bg-white">
-                <p className="text-xs leading-relaxed whitespace-pre-line" style={{ color: '#334155' }}>{s.submission_note}</p>
-              </div>
+              <div className="px-4 py-3 bg-white text-xs leading-relaxed"
+                   style={{ color: '#334155' }}
+                   dangerouslySetInnerHTML={{
+                     __html: DOMPurify.sanitize(
+                       // Older submissions were saved as plain text (no rich-text
+                       // editor at the time) — preserve their line breaks, since a
+                       // bare "\n" renders as nothing in HTML.
+                       /<[a-z][\s\S]*>/i.test(s.submission_note)
+                         ? s.submission_note
+                         : s.submission_note.replace(/\n/g, '<br>')
+                     ),
+                   }} />
             </div>
           )}
 
