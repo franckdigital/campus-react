@@ -127,7 +127,7 @@ export default function StudentProfile() {
           <div className="flex-1 min-w-0">
             <p className="font-extrabold text-base leading-tight" style={{ color: '#0f172a' }}>{fullName}</p>
             {student?.matricule && <p className="text-xs font-mono font-bold mt-0.5" style={{ color: C }}>{student.matricule}</p>}
-            {student?.current_class && <p className="text-xs mt-0.5" style={{ color: '#64748b' }}>{student.current_class}</p>}
+            {student?.current_class && <p className="text-xs mt-0.5" style={{ color: '#64748b' }}>{student.current_class.name}</p>}
           </div>
         </div>
         {student?.site_name && (
@@ -145,7 +145,11 @@ export default function StudentProfile() {
         <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#94a3b8' }}>Compte</p>
         <InfoRow icon={Mail} label="E-mail" value={user?.email} />
         {student?.matricule && <InfoRow icon={Hash} label="Matricule" value={student.matricule} />}
-        {student?.current_class && <InfoRow icon={Layers} label="Classe" value={student.current_class} />}
+        {student?.current_class && (
+          <InfoRow icon={Layers} label="Classe" value={
+            [student.current_class.name, student.current_class.program_name].filter(Boolean).join(' — ')
+          } />
+        )}
       </div>
 
       {/* Editable info */}
