@@ -551,12 +551,14 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
         // Single row, single class — unchanged behaviour from before
         // multi-class creation existed.
         const classId = form.is_global ? null : form.class_objs[0];
-        let quizId = form.is_global ? null : (editing?.quiz || null);
+        let quizId = editing?.quiz || null;
 
-        if (!form.is_global && questions.length > 0 && classId && form.subject && questionsChanged) {
+        if (questions.length > 0 && questionsChanged && (form.is_global || (classId && form.subject))) {
           if (!quizId) {
             const quiz = await elearningService.createQuiz({
-              title: `Quiz – ${form.title || 'Examen'}`, class_obj: classId, subject: form.subject,
+              title: `Quiz – ${form.title || 'Examen'}`,
+              class_obj: form.is_global ? null : classId,
+              subject: form.is_global ? null : form.subject,
             });
             quizId = quiz.id;
           }
@@ -587,11 +589,28 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
         });
         await uploadPdfIfAny(savedExam?.id);
       } else if (form.is_global) {
-        // One single exam, open to every student regardless of filière/classe —
-        // no auto-graded quiz possible here (Quiz.class_obj/subject are
-        // required), so this only ever carries a PDF sujet.
+        // One single exam, open to every student regardless of filière/classe.
+        let quizId = null;
+        if (questions.length > 0) {
+          const quiz = await elearningService.createQuiz({
+            title: `Quiz – ${form.title || 'Examen'}`, class_obj: null, subject: null,
+          });
+          quizId = quiz.id;
+          await Promise.all(questions.map(async (q) => {
+            const savedQ = await elearningService.createQuestion({
+              quiz: quizId, question_type: q.question_type, text: q.text,
+              points: q.points || 1, time_limit: q.time_limit || 0, model_answer: q.model_answer || '',
+            });
+            if (q.question_type !== 'TEXT') {
+              await Promise.all((q.choices || []).map(c => {
+                if (!c.text?.trim()) return null;
+                return elearningService.createChoice({ question: savedQ.id, text: c.text.trim(), is_correct: !!c.is_correct });
+              }));
+            }
+          }));
+        }
         const exam = await elearningService.createSecureExam({
-          ...basePayload, class_obj: null, subject: null, quiz: null, site: form.site || null,
+          ...basePayload, class_obj: null, subject: null, quiz: quizId, site: form.site || null,
         });
         await uploadPdfIfAny(exam?.id);
       } else {
@@ -729,7 +748,7 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
                     Examen ouvert à tous (simulation)
                   </p>
                   <p className="text-xs" style={{ color: '#94a3b8' }}>
-                    Accessible à tous les étudiants, toutes filières et classes confondues — pas de sujet auto-corrigé (QCM), sujet PDF uniquement.
+                    Accessible à tous les étudiants, toutes filières et classes confondues — QCM (onglet Questions) et/ou sujet PDF.
                   </p>
                 </div>
               </label>
