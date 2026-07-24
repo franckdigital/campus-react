@@ -407,9 +407,9 @@ function SpontaneousModal({ classroom, sites = [], defaultSiteId, onClose, onSav
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background: '#fff', borderRadius: 24, width: '100%', maxWidth: 460, boxShadow: '0 32px 80px rgba(0,0,0,0.3)', overflow: 'hidden' }}
+        style={{ background: '#fff', borderRadius: 24, width: '100%', maxWidth: 460, maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 80px rgba(0,0,0,0.3)', overflow: 'hidden' }}
       >
-        <div className="px-6 py-5" style={{ background: 'linear-gradient(135deg,#ea580c,#db2777)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div className="px-6 py-5" style={{ background: 'linear-gradient(135deg,#ea580c,#db2777)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Zap size={20} color="#fff" />
@@ -428,7 +428,7 @@ function SpontaneousModal({ classroom, sites = [], defaultSiteId, onClose, onSav
           </button>
         </div>
 
-        <div className="p-6" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="p-6" style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <p style={{ fontSize: 12.5, color: '#64748b', margin: 0, lineHeight: 1.5, background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 12, padding: '10px 14px' }}>
             Ouverte à tous — étudiants, enseignants et personnel administratif du site choisi pourront la rejoindre immédiatement, sans inscription préalable à une classe.
           </p>
@@ -490,13 +490,15 @@ function SpontaneousModal({ classroom, sites = [], defaultSiteId, onClose, onSav
             <FocusInput type="number" min={15} max={480} value={durationMinutes}
               onChange={e => setDurationMinutes(parseInt(e.target.value) || 60)} />
           </div>
+        </div>
 
+        {/* Footer — sticky, always visible regardless of scroll position */}
+        <div className="px-6 pt-3 pb-4" style={{ borderTop: '1.5px solid #f0f4f9', background: '#fff', flexShrink: 0 }}>
           {error && (
-            <div style={{ padding: '10px 14px', borderRadius: 12, background: '#fef2f2', border: '1.5px solid #fca5a5', fontSize: 13, color: '#b91c1c' }}>
+            <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 12, background: '#fef2f2', border: '1.5px solid #fca5a5', fontSize: 13, color: '#b91c1c' }}>
               {error}
             </div>
           )}
-
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
             <button onClick={onClose} style={{ padding: '10px 20px', borderRadius: 12, border: '1.5px solid #e2e8f0', background: '#fff', fontSize: 13, fontWeight: 600, color: '#64748b', cursor: 'pointer' }}>
               Annuler
