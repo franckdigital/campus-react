@@ -11,6 +11,7 @@ import { useApi } from '../../hooks/useApi';
 import { IconBtn, Pagination } from '../../components/ui/PageHeader';
 import { useConfirm } from '../../components/ConfirmDialog';
 import PdfModal from '../../components/exam/PdfModal';
+import { useSite } from '../../contexts/SiteContext';
 
 /* ── tokens ──────────────────────────────────────────────────────────────── */
 const C = '#ef4444';
@@ -410,7 +411,7 @@ function PdfSection({ examPdf, examPdfUrl, onFileChange, pdfDuration, onPdfDurat
 }
 
 /* ── EXAM BUILDER MODAL ──────────────────────────────────────────────────── */
-function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsList = [], onSaved, notify = () => {} }) {
+function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsList = [], sitesList = [], onSaved, notify = () => {} }) {
   const [tab, setTab]         = useState('info');
   const [loading, setLoading] = useState(false);
   const [questions, setQuestions] = useState([]);
@@ -423,6 +424,7 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
 
   const blank = {
     title: '', description: '', class_objs: [], subject: '',
+    is_global: false, site: '',
     exam_type: 'FINAL', duration_minutes: 60, start_date: '', end_date: '',
     max_attempts: 1, pass_score_percent: 50, coefficient: 1,
     fullscreen_required: true, webcam_required: false,
@@ -441,6 +443,8 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
         ...blank, ...editing,
         class_objs: editing.class_obj ? [String(editing.class_obj)] : [],
         subject:    String(editing.subject || ''),
+        is_global:  !!editing.is_global,
+        site:       String(editing.site || ''),
         start_date: editing.start_date?.slice(0, 16) || '',
         end_date:   editing.end_date?.slice(0, 16) || '',
       });
@@ -505,7 +509,7 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
       notify({ type: 'error', title: 'Date requise', message: 'Merci de renseigner la date de composition de l\'examen.' });
       return;
     }
-    if (form.class_objs.length === 0) {
+    if (!form.is_global && form.class_objs.length === 0) {
       notify({ type: 'error', title: 'Classe requise', message: 'Sélectionnez au moins une classe.' });
       return;
     }
@@ -546,10 +550,10 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
       if (editing) {
         // Single row, single class — unchanged behaviour from before
         // multi-class creation existed.
-        const classId = form.class_objs[0];
-        let quizId = editing?.quiz || null;
+        const classId = form.is_global ? null : form.class_objs[0];
+        let quizId = form.is_global ? null : (editing?.quiz || null);
 
-        if (questions.length > 0 && classId && form.subject && questionsChanged) {
+        if (!form.is_global && questions.length > 0 && classId && form.subject && questionsChanged) {
           if (!quizId) {
             const quiz = await elearningService.createQuiz({
               title: `Quiz – ${form.title || 'Examen'}`, class_obj: classId, subject: form.subject,
@@ -577,8 +581,19 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
           }));
         }
 
-        const savedExam = await elearningService.updateSecureExam(editing.id, { ...basePayload, class_obj: classId, quiz: quizId });
+        const savedExam = await elearningService.updateSecureExam(editing.id, {
+          ...basePayload, class_obj: classId, subject: form.is_global ? null : form.subject, quiz: quizId,
+          site: form.is_global ? (form.site || null) : null,
+        });
         await uploadPdfIfAny(savedExam?.id);
+      } else if (form.is_global) {
+        // One single exam, open to every student regardless of filière/classe —
+        // no auto-graded quiz possible here (Quiz.class_obj/subject are
+        // required), so this only ever carries a PDF sujet.
+        const exam = await elearningService.createSecureExam({
+          ...basePayload, class_obj: null, subject: null, quiz: null, site: form.site || null,
+        });
+        await uploadPdfIfAny(exam?.id);
       } else {
         // Creation — same matière is often taught across several classes for
         // the same filière, so one independent exam (with its own quiz/
@@ -703,26 +718,54 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
                           className="w-full px-3 py-2 rounded-xl text-sm border outline-none resize-none"
                           style={{ borderColor: '#e2e8f0', background: '#f8fafc' }} />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <Lbl>{editing ? 'Classe' : 'Classe(s)'}</Lbl>
-                  <ClassPicker classesList={classesList} value={form.class_objs}
-                               onChange={v => F('class_objs')(v)} multiple={!editing} />
-                  {!editing && (
-                    <p className="text-[10px] mt-1" style={{ color: '#94a3b8' }}>
-                      Sélectionnez plusieurs classes pour créer le même examen dans chacune d'elles.
-                    </p>
-                  )}
+              <label className="flex items-center gap-3 p-3 rounded-xl cursor-pointer"
+                     style={{ background: form.is_global ? '#fff7ed' : '#f8fafc', border: `1.5px solid ${form.is_global ? '#fdba74' : '#e2e8f0'}` }}
+                     onClick={() => F('is_global')(!form.is_global)}>
+                <div style={{ width: 20, height: 20, borderRadius: 6, border: `2px solid ${form.is_global ? '#ea580c' : '#cbd5e1'}`, background: form.is_global ? '#ea580c' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {form.is_global && <CheckSquare className="h-3 w-3 text-white" />}
                 </div>
-                <div><Lbl>Matière</Lbl>
-                  <select value={form.subject} onChange={e => F('subject')(e.target.value)}
+                <div>
+                  <p className="text-sm font-bold" style={{ color: form.is_global ? '#9a3412' : '#374151' }}>
+                    Examen ouvert à tous (simulation)
+                  </p>
+                  <p className="text-xs" style={{ color: '#94a3b8' }}>
+                    Accessible à tous les étudiants, toutes filières et classes confondues — pas de sujet auto-corrigé (QCM), sujet PDF uniquement.
+                  </p>
+                </div>
+              </label>
+
+              {form.is_global ? (
+                <div>
+                  <Lbl>Site</Lbl>
+                  <select value={form.site} onChange={e => F('site')(e.target.value)}
                           className="w-full px-3 py-2 rounded-xl text-sm border outline-none"
                           style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
-                    <option value="">Sélectionner…</option>
-                    {subjectsList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    <option value="">Tous les sites</option>
+                    {sitesList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </div>
-              </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <Lbl>{editing ? 'Classe' : 'Classe(s)'}</Lbl>
+                    <ClassPicker classesList={classesList} value={form.class_objs}
+                                 onChange={v => F('class_objs')(v)} multiple={!editing} />
+                    {!editing && (
+                      <p className="text-[10px] mt-1" style={{ color: '#94a3b8' }}>
+                        Sélectionnez plusieurs classes pour créer le même examen dans chacune d'elles.
+                      </p>
+                    )}
+                  </div>
+                  <div><Lbl>Matière</Lbl>
+                    <select value={form.subject} onChange={e => F('subject')(e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl text-sm border outline-none"
+                            style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
+                      <option value="">Sélectionner…</option>
+                      {subjectsList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div><Lbl>Type</Lbl>
                   <select value={form.exam_type} onChange={e => F('exam_type')(e.target.value)}
@@ -1117,6 +1160,7 @@ export default function ExamManager({ classesList = [], subjectsList = [], selec
   const [editing, setEditing]   = useState(null);
   const [showSessions, setShowSessions] = useState(null);
   const confirm = useConfirm();
+  const { sites } = useSite();
 
   const classFilter = selectedClass && selectedClass !== 'all' ? { class_obj: selectedClass } : {};
   const { data, refetch } = useApi(() => elearningService.getSecureExams({ ...classFilter, page_size: 200 }), [selectedClass], true);
@@ -1237,9 +1281,13 @@ export default function ExamManager({ classesList = [], subjectsList = [], selec
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
                                     style={{ background: '#f5f3ff', color: '#7c3aed' }}>📄 PDF</span>
                             )}
+                            {exam.is_global && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                                    style={{ background: '#ffedd5', color: '#9a3412' }}>🌐 Simulation</span>
+                            )}
                           </div>
                           <div className="flex items-center gap-3 text-xs flex-wrap" style={{ color: '#64748b' }}>
-                            <span>{exam.class_name} — {exam.subject_name}</span>
+                            <span>{exam.is_global ? `Ouvert à tous — ${exam.site_name || 'tous les sites'}` : `${exam.class_name} — ${exam.subject_name}`}</span>
                             <span className="flex items-center gap-1">
                               <Clock className="h-3 w-3" />{exam.duration_minutes} min
                             </span>
@@ -1293,6 +1341,7 @@ export default function ExamManager({ classesList = [], subjectsList = [], selec
         editing={editing}
         classesList={classesList}
         subjectsList={subjectsList}
+        sitesList={sites}
         onSaved={handleSaved}
         notify={notify}
       />
