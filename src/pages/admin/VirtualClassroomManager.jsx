@@ -352,6 +352,7 @@ function SpontaneousModal({ classroom, sites = [], defaultSiteId, onClose, onSav
   const [title, setTitle] = useState(classroom?.title || 'Réunion spontanée');
   const [siteId, setSiteId] = useState(classroom?.site || defaultSiteId || '');
   const [provider, setProvider] = useState(classroom?.provider || 'JITSI');
+  const [startTime, setStartTime] = useState(toDatetimeLocal(classroom?.start_time) || toDatetimeLocal(new Date().toISOString()));
   const [durationMinutes, setDurationMinutes] = useState(classroom?.duration_minutes || 60);
   const [joinUrl, setJoinUrl] = useState(classroom?.join_url || '');
   const [meetingId, setMeetingId] = useState(classroom?.meeting_id || '');
@@ -366,6 +367,10 @@ function SpontaneousModal({ classroom, sites = [], defaultSiteId, onClose, onSav
       setError('Titre et site sont requis.');
       return;
     }
+    if (!startTime) {
+      setError('Date et heure de début requises.');
+      return;
+    }
     if (needsUrl && !joinUrl.trim()) {
       setError('URL de participation requise pour cette plateforme.');
       return;
@@ -377,9 +382,9 @@ function SpontaneousModal({ classroom, sites = [], defaultSiteId, onClose, onSav
         provider,
         is_spontaneous: true,
         site: siteId,
+        start_time: new Date(startTime).toISOString(),
         duration_minutes: Number(durationMinutes) || 60,
       };
-      if (!isEdit) payload.start_time = new Date().toISOString();
       if (needsUrl) {
         payload.join_url = joinUrl.trim();
         payload.meeting_id = meetingId;
@@ -416,7 +421,7 @@ function SpontaneousModal({ classroom, sites = [], defaultSiteId, onClose, onSav
             </div>
             <div>
               <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
-                {isEdit ? 'Modification' : 'Démarrage immédiat'}
+                {isEdit ? 'Modification' : 'Immédiat ou planifié'}
               </p>
               <h2 style={{ color: '#fff', fontSize: 17, fontWeight: 800, margin: 0 }}>
                 {isEdit ? 'Modifier la classe spontanée' : 'Classe virtuelle spontanée'}
@@ -430,7 +435,7 @@ function SpontaneousModal({ classroom, sites = [], defaultSiteId, onClose, onSav
 
         <div className="p-6" style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <p style={{ fontSize: 12.5, color: '#64748b', margin: 0, lineHeight: 1.5, background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 12, padding: '10px 14px' }}>
-            Ouverte à tous — étudiants, enseignants et personnel administratif du site choisi pourront la rejoindre immédiatement, sans inscription préalable à une classe.
+            Ouverte à tous — étudiants, enseignants et personnel administratif du site choisi pourront la rejoindre dès l'heure indiquée ci-dessous, sans inscription préalable à une classe.
           </p>
 
           <div>
@@ -444,6 +449,14 @@ function SpontaneousModal({ classroom, sites = [], defaultSiteId, onClose, onSav
               <option value="">Sélectionner un site…</option>
               {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
+          </div>
+
+          <div>
+            <FieldLabel required>Date et heure de début</FieldLabel>
+            <FocusInput type="datetime-local" value={startTime} onChange={e => setStartTime(e.target.value)} />
+            <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 5 }}>
+              Laissez l'heure actuelle pour démarrer immédiatement, ou choisissez une date ultérieure pour la planifier.
+            </p>
           </div>
 
           <div>
@@ -505,7 +518,7 @@ function SpontaneousModal({ classroom, sites = [], defaultSiteId, onClose, onSav
             </button>
             <button onClick={save} disabled={saving} style={{ padding: '10px 24px', borderRadius: 12, border: 'none', background: saving ? '#fdba74' : 'linear-gradient(135deg,#ea580c,#db2777)', fontSize: 13, fontWeight: 700, color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
               {saving && <Loader size={14} className="animate-spin" />}
-              {saving ? 'Enregistrement…' : isEdit ? 'Enregistrer les modifications' : 'Démarrer maintenant'}
+              {saving ? 'Enregistrement…' : isEdit ? 'Enregistrer les modifications' : (new Date(startTime) > new Date() ? 'Planifier la session' : 'Démarrer maintenant')}
             </button>
           </div>
         </div>
