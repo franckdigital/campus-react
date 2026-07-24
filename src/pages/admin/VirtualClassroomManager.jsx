@@ -347,31 +347,54 @@ function ClassroomModal({ classroom, classes = [], subjects = [], onClose, onSav
 // Creates an ad-hoc virtual class open to everyone (students, teachers, staff)
 // on a given site — no class/subject assignment needed, starts immediately.
 
-function SpontaneousModal({ sites = [], defaultSiteId, onClose, onCreated }) {
-  const [title, setTitle] = useState('Réunion spontanée');
-  const [siteId, setSiteId] = useState(defaultSiteId || '');
-  const [durationMinutes, setDurationMinutes] = useState(60);
+function SpontaneousModal({ classroom, sites = [], defaultSiteId, onClose, onSaved }) {
+  const isEdit = !!classroom;
+  const [title, setTitle] = useState(classroom?.title || 'Réunion spontanée');
+  const [siteId, setSiteId] = useState(classroom?.site || defaultSiteId || '');
+  const [provider, setProvider] = useState(classroom?.provider || 'JITSI');
+  const [durationMinutes, setDurationMinutes] = useState(classroom?.duration_minutes || 60);
+  const [joinUrl, setJoinUrl] = useState(classroom?.join_url || '');
+  const [meetingId, setMeetingId] = useState(classroom?.meeting_id || '');
+  const [password, setPassword] = useState(classroom?.password || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const create = async () => {
+  const needsUrl = ['ZOOM', 'MEET', 'TEAMS', 'BBB', 'OTHER'].includes(provider);
+
+  const save = async () => {
     if (!title.trim() || !siteId) {
       setError('Titre et site sont requis.');
       return;
     }
+    if (needsUrl && !joinUrl.trim()) {
+      setError('URL de participation requise pour cette plateforme.');
+      return;
+    }
     setSaving(true); setError('');
     try {
-      const created = await elearningService.createClassroom({
+      const payload = {
         title: title.trim(),
-        provider: 'JITSI',
+        provider,
         is_spontaneous: true,
         site: siteId,
-        start_time: new Date().toISOString(),
         duration_minutes: Number(durationMinutes) || 60,
-      });
-      onCreated(created);
+      };
+      if (!isEdit) payload.start_time = new Date().toISOString();
+      if (needsUrl) {
+        payload.join_url = joinUrl.trim();
+        payload.meeting_id = meetingId;
+        payload.password = password;
+      } else {
+        payload.join_url = '';
+        payload.meeting_id = '';
+        payload.password = '';
+      }
+      const result = isEdit
+        ? await elearningService.updateClassroom(classroom.id, payload)
+        : await elearningService.createClassroom(payload);
+      onSaved(result);
     } catch (e) {
-      setError(e.message || 'Erreur lors de la création.');
+      setError(e.message || 'Erreur lors de l\'enregistrement.');
     }
     setSaving(false);
   };
@@ -392,8 +415,12 @@ function SpontaneousModal({ sites = [], defaultSiteId, onClose, onCreated }) {
               <Zap size={20} color="#fff" />
             </div>
             <div>
-              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Démarrage immédiat</p>
-              <h2 style={{ color: '#fff', fontSize: 17, fontWeight: 800, margin: 0 }}>Classe virtuelle spontanée</h2>
+              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
+                {isEdit ? 'Modification' : 'Démarrage immédiat'}
+              </p>
+              <h2 style={{ color: '#fff', fontSize: 17, fontWeight: 800, margin: 0 }}>
+                {isEdit ? 'Modifier la classe spontanée' : 'Classe virtuelle spontanée'}
+              </h2>
             </div>
           </div>
           <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(255,255,255,0.15)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -420,6 +447,45 @@ function SpontaneousModal({ sites = [], defaultSiteId, onClose, onCreated }) {
           </div>
 
           <div>
+            <FieldLabel required>Plateforme</FieldLabel>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {PROVIDERS.map(p => {
+                const active = provider === p.value;
+                return (
+                  <button key={p.value} type="button" onClick={() => setProvider(p.value)} style={{
+                    padding: '9px 8px', borderRadius: 12, fontSize: 12, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+                    border: `2px solid ${active ? '#ea580c' : '#e2e8f0'}`,
+                    background: active ? '#fff7ed' : '#f8fafc',
+                    color: active ? '#c2410c' : '#64748b',
+                  }}>
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {needsUrl && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <FieldLabel required>URL de participation</FieldLabel>
+                <FocusInput type="url" value={joinUrl} onChange={e => setJoinUrl(e.target.value)}
+                  placeholder="https://meet.google.com/…" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <FieldLabel>ID réunion</FieldLabel>
+                  <FocusInput value={meetingId} onChange={e => setMeetingId(e.target.value)} placeholder="123 456 7890" />
+                </div>
+                <div>
+                  <FieldLabel>Mot de passe</FieldLabel>
+                  <FocusInput value={password} onChange={e => setPassword(e.target.value)} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div>
             <FieldLabel>Durée (minutes)</FieldLabel>
             <FocusInput type="number" min={15} max={480} value={durationMinutes}
               onChange={e => setDurationMinutes(parseInt(e.target.value) || 60)} />
@@ -435,9 +501,9 @@ function SpontaneousModal({ sites = [], defaultSiteId, onClose, onCreated }) {
             <button onClick={onClose} style={{ padding: '10px 20px', borderRadius: 12, border: '1.5px solid #e2e8f0', background: '#fff', fontSize: 13, fontWeight: 600, color: '#64748b', cursor: 'pointer' }}>
               Annuler
             </button>
-            <button onClick={create} disabled={saving} style={{ padding: '10px 24px', borderRadius: 12, border: 'none', background: saving ? '#fdba74' : 'linear-gradient(135deg,#ea580c,#db2777)', fontSize: 13, fontWeight: 700, color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={save} disabled={saving} style={{ padding: '10px 24px', borderRadius: 12, border: 'none', background: saving ? '#fdba74' : 'linear-gradient(135deg,#ea580c,#db2777)', fontSize: 13, fontWeight: 700, color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
               {saving && <Loader size={14} className="animate-spin" />}
-              {saving ? 'Démarrage…' : 'Démarrer maintenant'}
+              {saving ? 'Enregistrement…' : isEdit ? 'Enregistrer les modifications' : 'Démarrer maintenant'}
             </button>
           </div>
         </div>
@@ -852,13 +918,11 @@ function ClassroomCard({ cr, onOpen, onChat, onEdit, onDelete, onEnd }) {
               <StopCircle size={14} />
             </button>
           )}
-          {!cr.is_spontaneous && (
-            <button onClick={onEdit} title="Modifier" style={{ width: 34, height: 34, borderRadius: 10, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', color: '#64748b', flexShrink: 0 }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#dbeafe'; e.currentTarget.style.color = '#2563eb'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = '#64748b'; }}>
-              <Edit2 size={13} />
-            </button>
-          )}
+          <button onClick={onEdit} title="Modifier" style={{ width: 34, height: 34, borderRadius: 10, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', color: '#64748b', flexShrink: 0 }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#dbeafe'; e.currentTarget.style.color = '#2563eb'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = '#64748b'; }}>
+            <Edit2 size={13} />
+          </button>
           <button onClick={onDelete} title="Supprimer" style={{ width: 34, height: 34, borderRadius: 10, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff1f2', color: '#f43f5e', flexShrink: 0 }}
             onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#ef4444'; }}
             onMouseLeave={e => { e.currentTarget.style.background = '#fff1f2'; e.currentTarget.style.color = '#f43f5e'; }}>
@@ -878,6 +942,7 @@ export default function VirtualClassroomManager({ classesList, subjectsList } = 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [spontaneousOpen, setSpontaneousOpen] = useState(false);
+  const [editingSpontaneous, setEditingSpontaneous] = useState(null);
   const [liveClassroom, setLiveClassroom] = useState(null);
   const [chatClassroom, setChatClassroom] = useState(null);
   const confirm = useConfirm();
@@ -913,8 +978,13 @@ export default function VirtualClassroomManager({ classesList, subjectsList } = 
     blockSearchRef.current = true;
     setSearch('');
     setTimeout(() => { blockSearchRef.current = false; }, 300);
-    setEditing(cr);
-    setModalOpen(true);
+    if (cr.is_spontaneous) {
+      setEditingSpontaneous(cr);
+      setSpontaneousOpen(true);
+    } else {
+      setEditing(cr);
+      setModalOpen(true);
+    }
   };
 
   const handleSearchChange = (e) => {
@@ -952,7 +1022,7 @@ export default function VirtualClassroomManager({ classesList, subjectsList } = 
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
           <button
-            onClick={() => setSpontaneousOpen(true)}
+            onClick={() => { setEditingSpontaneous(null); setSpontaneousOpen(true); }}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,#ea580c,#db2777)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(234,88,12,0.35)' }}>
             <Zap size={15} /> Classe virtuelle spontanée
           </button>
@@ -1056,13 +1126,16 @@ export default function VirtualClassroomManager({ classesList, subjectsList } = 
       )}
       {spontaneousOpen && (
         <SpontaneousModal
+          classroom={editingSpontaneous}
           sites={sites}
           defaultSiteId={selectedSite !== 'all' ? selectedSite : (sites[0]?.id || '')}
-          onClose={() => setSpontaneousOpen(false)}
-          onCreated={(created) => {
+          onClose={() => { setSpontaneousOpen(false); setEditingSpontaneous(null); }}
+          onSaved={(saved) => {
+            const wasEdit = !!editingSpontaneous;
             setSpontaneousOpen(false);
+            setEditingSpontaneous(null);
             refetch();
-            setLiveClassroom(created);
+            if (!wasEdit) setLiveClassroom(saved);
           }}
         />
       )}

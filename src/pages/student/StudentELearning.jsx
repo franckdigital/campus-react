@@ -1135,11 +1135,21 @@ function QuizListTab({ classId, navigate }) {
 // ─── EXAMENS LIST ─────────────────────────────────────────────────────────────
 
 function ExamsListTab({ classId, navigate }) {
+  // Global "simulation" exams (is_global=True) aren't tied to a class — fetched
+  // separately and merged in, same pattern as VirtualClassroomsTab's spontaneous
+  // sessions above (a bare ?class_obj=<id> filter would otherwise exclude them).
   const { data, loading } = useApi(
-    () => classId ? elearningService.getSecureExams({ class_obj: classId, is_published: true, page_size: 50 }) : Promise.resolve({ results: [] }),
-    [classId], !!classId
+    () => Promise.all([
+      classId ? elearningService.getSecureExams({ class_obj: classId, is_published: true, page_size: 50 }) : Promise.resolve({ results: [] }),
+      elearningService.getSecureExams({ is_global: true, is_published: true, page_size: 50 }),
+    ]),
+    [classId], true
   );
-  const exams = data?.results ?? data ?? [];
+  const [classData, globalData] = data || [];
+  const exams = [
+    ...(classData?.results ?? classData ?? []),
+    ...(globalData?.results ?? globalData ?? []),
+  ];
   const EXAM_TYPES = { MID: 'Partiel', FINAL: 'Examen final', SUPP: 'Rattrapage', TP: 'TP noté', CONCOURS: 'Concours' };
 
   if (loading) return <Spinner />;
