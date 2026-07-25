@@ -11,6 +11,7 @@ import { useAuth } from '../../context/AuthContext';
 import PdfModal from '../../components/exam/PdfModal';
 import RichTextEditor from '../../components/exam/RichTextEditor';
 import CalculatorWidget from '../../components/exam/CalculatorWidget';
+import { sanitizeRichText } from '../../utils/richText';
 
 /* ── constants ───────────────────────────────────────────────────────────── */
 const LOG_COOLDOWN      = 3000;
@@ -544,9 +545,8 @@ function QuestionCard({ question, idx, total, answer, onAnswer, onPrev, onNext, 
         )}
 
         {/* Question text */}
-        <p className="text-base font-semibold leading-relaxed" style={{ color: '#1e293b' }}>
-          {question.text}
-        </p>
+        <div className="text-base font-semibold leading-relaxed" style={{ color: '#1e293b' }}
+             dangerouslySetInnerHTML={{ __html: sanitizeRichText(question.text) }} />
       </div>
 
       {/* Answer area */}
@@ -854,7 +854,8 @@ function ResultsPage({ exam, questions, result, navigate }) {
                                   style={{ color: '#d97706', background: '#fffbeb' }}>Partielle</span>
                           )}
                         </div>
-                        <p className="text-sm font-medium mb-2" style={{ color: '#1e293b' }}>{a.question_text || q.text}</p>
+                        <p className="text-sm font-medium mb-2" style={{ color: '#1e293b' }}
+                           dangerouslySetInnerHTML={{ __html: sanitizeRichText(a.question_text || q.text) }} />
 
                         {/* Show correct choices */}
                         {q.choices && q.choices.length > 0 && (
@@ -1217,7 +1218,9 @@ function IntroPage({ exam, onStart, error, attemptsExhausted, starting }) {
               <Shield className="h-8 w-8 text-white" />
             </div>
             <h1 className="text-2xl font-black mb-1">{exam?.title}</h1>
-            {exam?.description && <p className="text-sm opacity-70 mt-2">{exam.description}</p>}
+            {exam?.description && (
+              <div className="text-sm opacity-70 mt-2" dangerouslySetInnerHTML={{ __html: sanitizeRichText(exam.description) }} />
+            )}
           </div>
           <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-white opacity-10" />
         </div>

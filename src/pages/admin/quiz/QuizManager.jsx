@@ -10,6 +10,7 @@ import { elearningService } from '../../../services';
 import { useApi } from '../../../hooks/useApi';
 import { PageHeader, FilterSelect, PrimaryButton, IconBtn, Pagination } from '../../../components/ui/PageHeader';
 import { useConfirm } from '../../../components/ConfirmDialog';
+import { stripHtml } from '../../../utils/richText';
 
 const COLOR = '#7c3aed'; const COLOR_BG = '#ede9fe'; const COLOR_ICON = '#ddd6fe';
 const ITEMS_PER_PAGE = 8;
@@ -418,7 +419,7 @@ function QuizBuilderModal({ quiz, onClose, notify, onUpdated }) {
                   <meta.icon className="h-4 w-4" style={{ color: meta.color }} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold truncate" style={{ color: '#0f172a' }}>{q.text}</p>
+                  <p className="text-sm font-bold truncate" style={{ color: '#0f172a' }}>{stripHtml(q.text)}</p>
                   <div className="flex items-center gap-2 text-[11px]">
                     <span className="px-2 py-0.5 rounded-md font-bold" style={{ background: `${meta.color}12`, color: meta.color }}>{meta.label}</span>
                     <span style={{ color: '#94a3b8' }}>{q.points} pt{q.points > 1 ? 's' : ''}</span>
@@ -579,7 +580,7 @@ function QuizAnalyticsModal({ quiz, onClose, notify }) {
                     <span className="w-6 h-6 bg-purple-50 text-purple-700 rounded-lg text-xs font-bold flex items-center justify-center flex-shrink-0">
                       {i + 1}
                     </span>
-                    <p className="text-sm text-gray-700 font-medium flex-1">{q.text}</p>
+                    <p className="text-sm text-gray-700 font-medium flex-1">{stripHtml(q.text)}</p>
                     <span className={`text-xs font-bold flex-shrink-0 ${rate >= 70 ? 'text-green-600' : rate >= 40 ? 'text-amber-600' : 'text-red-600'}`}>
                       {rate.toFixed(0)}% réussite
                     </span>

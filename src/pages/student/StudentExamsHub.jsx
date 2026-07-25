@@ -8,6 +8,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { elearningService } from '../../services/elearning';
 import PdfModal from '../../components/exam/PdfModal';
+import { sanitizeRichText } from '../../utils/richText';
 
 const P = '#db2777';
 const P_LIGHT = '#fce7f3';
@@ -381,7 +382,9 @@ function ExamDetailView({ exam: examProp, onBack }) {
               {hasClassroom && <span className="px-2.5 py-1 rounded-full text-xs font-bold" style={{ background: '#f0fdf4', color: '#059669' }}>Classe virtuelle</span>}
             </div>
             <h1 className="text-xl font-black mb-1" style={{ color: '#1e293b' }}>{exam.title}</h1>
-            {exam.description && <p className="text-sm" style={{ color: '#64748b' }}>{exam.description}</p>}
+            {exam.description && (
+              <div className="text-sm" style={{ color: '#64748b' }} dangerouslySetInnerHTML={{ __html: sanitizeRichText(exam.description) }} />
+            )}
           </div>
           <div className="h-14 w-14 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: `${tc}15` }}>
             <Award className="h-6 w-6" style={{ color: tc }} />
