@@ -11,7 +11,9 @@ import { useApi } from '../../hooks/useApi';
 import { IconBtn, Pagination } from '../../components/ui/PageHeader';
 import { useConfirm } from '../../components/ConfirmDialog';
 import PdfModal from '../../components/exam/PdfModal';
+import RichTextEditor from '../../components/exam/RichTextEditor';
 import { useSite } from '../../contexts/SiteContext';
+import { stripHtml } from '../../utils/richText';
 
 /* ── tokens ──────────────────────────────────────────────────────────────── */
 const C = '#ef4444';
@@ -191,7 +193,7 @@ function QuestionEditor({ question, onChange, onDelete, idx }) {
         <GripVertical className="h-4 w-4 flex-shrink-0" style={{ color: '#cbd5e1' }} />
         <QBadge type={question.question_type} />
         <span className="flex-1 text-sm font-semibold truncate" style={{ color: '#1e293b' }}>
-          {question.text || `Question ${idx + 1}`}
+          {stripHtml(question.text) || `Question ${idx + 1}`}
         </span>
         <span className="text-xs font-bold flex-shrink-0" style={{ color: '#64748b' }}>
           {question.points || 1} pt{(question.points || 1) > 1 ? 's' : ''}
@@ -255,12 +257,8 @@ function QuestionEditor({ question, onChange, onDelete, idx }) {
           {/* Question text */}
           <div>
             <Lbl>Énoncé de la question *</Lbl>
-            <textarea value={question.text || ''}
-                      onChange={e => setField('text', e.target.value)}
-                      rows={3}
-                      placeholder="Saisissez la question ici…"
-                      className="w-full px-3 py-2 rounded-xl text-sm border resize-none outline-none"
-                      style={{ borderColor: '#e2e8f0', background: '#f8fafc' }} />
+            <RichTextEditor initialValue={question.text || ''} onChange={html => setField('text', html)}
+                            placeholder="Saisissez la question ici…" minHeight={90} />
           </div>
 
           {/* Choices (QCU / QCM / TRUEFALSE) */}
@@ -732,10 +730,8 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
                 <Input value={form.title} onChange={e => F('title')(e.target.value)} placeholder="Ex: Examen final - Mathématiques S1" />
               </div>
               <div><Lbl>Description</Lbl>
-                <textarea value={form.description} onChange={e => F('description')(e.target.value)}
-                          rows={2} placeholder="Instructions, consignes spéciales…"
-                          className="w-full px-3 py-2 rounded-xl text-sm border outline-none resize-none"
-                          style={{ borderColor: '#e2e8f0', background: '#f8fafc' }} />
+                <RichTextEditor initialValue={form.description} onChange={html => F('description')(html)}
+                                placeholder="Instructions, consignes spéciales…" minHeight={90} />
               </div>
               <label className="flex items-center gap-3 p-3 rounded-xl cursor-pointer"
                      style={{ background: form.is_global ? '#fff7ed' : '#f8fafc', border: `1.5px solid ${form.is_global ? '#fdba74' : '#e2e8f0'}` }}

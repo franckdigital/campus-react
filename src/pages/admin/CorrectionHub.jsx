@@ -1,5 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import DOMPurify from 'dompurify';
+import { stripHtml } from '../../utils/richText';
 import {
   ClipboardList, ClipboardCheck, Shield, Download, Upload, Star,
   CheckCircle, Clock, ChevronDown, ChevronUp, FileText, Award,
@@ -101,7 +102,7 @@ function QuestionGradeRow({ q, idx, ans, earned, maxPts, status, manualVal, onMa
                 style={{ background: '#f1f5f9', color: '#64748b' }}>
             {QTYPE_SHORT[q.question_type] || q.question_type}
           </span>
-          <p className="text-xs font-semibold leading-snug truncate" style={{ color: '#334155' }}>{q.text}</p>
+          <p className="text-xs font-semibold leading-snug truncate" style={{ color: '#334155' }}>{stripHtml(q.text)}</p>
         </div>
         {ans?.text_response && (
           <p className="text-[11px] italic mt-0.5 line-clamp-2"
@@ -1074,7 +1075,7 @@ function ExamSessionRow({ session: s, exam, notify, onGraded }) {
                   <div key={q.id} className="px-4 py-3 flex items-center gap-3">
                     <span className="h-6 w-6 rounded-md flex items-center justify-center text-[10px] font-extrabold flex-shrink-0"
                           style={{ background: '#fef3c7', color: A }}>{i + 1}</span>
-                    <p className="text-xs font-semibold flex-1 truncate" style={{ color: '#334155' }}>{q.text}</p>
+                    <p className="text-xs font-semibold flex-1 truncate" style={{ color: '#334155' }}>{stripHtml(q.text)}</p>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <input
                         type="number" min="0" max={maxPts} step="0.5"

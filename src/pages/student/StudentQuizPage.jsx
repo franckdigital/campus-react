@@ -6,6 +6,7 @@ import {
   ArrowUpDown, GitCompare, Calculator, Type, ListChecks, Hash, Download, FileText,
 } from 'lucide-react';
 import elearningService from '../../services/elearning';
+import { sanitizeRichText } from '../../utils/richText';
 
 function formatTime(secs) {
   const m = Math.floor(secs / 60);
@@ -231,7 +232,9 @@ function QuizResults({ attempt, questions, answers, onRetry, onBack }) {
                   {correct ? <CheckCircle size={14} className="text-white" /> : pending ? <AlertCircle size={14} className="text-white" /> : <XCircle size={14} className="text-white" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800">Q{idx + 1}. {q.text}</p>
+                  <p className="text-sm font-medium text-gray-800">
+                    Q{idx + 1}. <span dangerouslySetInnerHTML={{ __html: sanitizeRichText(q.text) }} />
+                  </p>
                   {q.explanation && !pending && (
                     <p className="text-xs text-gray-500 mt-1 italic">{q.explanation}</p>
                   )}
@@ -420,7 +423,9 @@ export default function StudentQuizPage() {
               <ListChecks size={32} className="text-purple-600" />
             </div>
             <h1 className="text-2xl font-black text-gray-900">{quiz?.title}</h1>
-            {quiz?.description && <p className="text-gray-500 text-sm mt-2">{quiz.description}</p>}
+            {quiz?.description && (
+              <div className="text-gray-500 text-sm mt-2" dangerouslySetInnerHTML={{ __html: sanitizeRichText(quiz.description) }} />
+            )}
           </div>
 
           <div className="space-y-2 text-sm">
@@ -566,7 +571,7 @@ export default function StudentQuizPage() {
 
                 {/* Question body */}
                 <div className="p-5 space-y-4">
-                  <p className="text-gray-900 font-semibold leading-relaxed">{q.text}</p>
+                  <div className="text-gray-900 font-semibold leading-relaxed" dangerouslySetInnerHTML={{ __html: sanitizeRichText(q.text) }} />
                   <QuestionRenderer question={q} answer={answers[q.id]} onAnswer={setAnswer} />
                 </div>
               </div>
