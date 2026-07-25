@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Shield, ShieldAlert, AlertTriangle, AlertCircle, Clock, ChevronRight, CheckCircle, XCircle, Send,
+  Shield, ShieldAlert, AlertTriangle, AlertCircle, Clock, CheckCircle, XCircle, Send,
   Camera, CameraOff, Play, RotateCcw, FileText,
-  ChevronLeft, Award, Star, Target, BookOpen, Lock, Eye, LogOut, Calculator as CalculatorIcon,
+  Award, Star, Target, BookOpen, Lock, Eye, LogOut, Calculator as CalculatorIcon,
 } from 'lucide-react';
 import elearningService from '../../services/elearning';
 import { analyzeFrame, preloadProctoringModels } from '../../utils/examProctoring';
@@ -512,19 +512,20 @@ function QuestionTimer({ limit, onExpire }) {
   );
 }
 
-function QuestionCard({ question, idx, total, answer, onAnswer, onPrev, onNext, onExpire }) {
+function QuestionCard({ question, idx, total, answer, onAnswer, expired, onExpire }) {
   const choices   = question.choices || [];
   const choiceIds = answer?.choice_ids || [];
   const meta      = QTYPE_META[question.question_type] || QTYPE_META.QCU;
 
-  const pick   = (id) => onAnswer({ choice_ids: [id] });
+  const pick   = (id) => { if (!expired) onAnswer({ choice_ids: [id] }); };
   const toggle = (id) => {
+    if (expired) return;
     const next = choiceIds.includes(id) ? choiceIds.filter(x => x !== id) : [...choiceIds, id];
     onAnswer({ choice_ids: next });
   };
 
   return (
-    <div className="flex flex-col gap-5 h-full">
+    <div className="flex flex-col gap-5">
       {/* Card header */}
       <div className="rounded-2xl p-5 space-y-3" style={{ background: 'white', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
         <div className="flex items-center justify-between">
@@ -539,9 +540,16 @@ function QuestionCard({ question, idx, total, answer, onAnswer, onPrev, onNext, 
           </span>
         </div>
 
-        {/* Per-question timer */}
-        {question.time_limit > 0 && (
+        {/* Per-question timer — since every question is visible at once
+            there's nothing to "advance" to on expiry; it just locks this
+            question's inputs instead (see `expired` below). */}
+        {question.time_limit > 0 && !expired && (
           <QuestionTimer key={question.id} limit={question.time_limit} onExpire={onExpire} />
+        )}
+        {expired && (
+          <div className="flex items-center gap-2 text-xs font-bold" style={{ color: '#ef4444' }}>
+            <Clock className="h-3.5 w-3.5" /> Temps écoulé pour cette question
+          </div>
         )}
 
         {/* Question text */}
@@ -550,7 +558,7 @@ function QuestionCard({ question, idx, total, answer, onAnswer, onPrev, onNext, 
       </div>
 
       {/* Answer area */}
-      <div className="rounded-2xl p-5 flex-1" style={{ background: 'white', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+      <div className="rounded-2xl p-5" style={{ background: 'white', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', opacity: expired ? 0.6 : 1, pointerEvents: expired ? 'none' : 'auto' }}>
         {(question.question_type === 'TRUEFALSE') ? (
           <div className="grid grid-cols-2 gap-4 h-full">
             {choices.map(c => {
@@ -600,6 +608,7 @@ function QuestionCard({ question, idx, total, answer, onAnswer, onPrev, onNext, 
                    value={answer?.numeric_response ?? ''}
                    onChange={e => onAnswer({ numeric_response: e.target.value === '' ? null : parseFloat(e.target.value) })}
                    placeholder="Votre réponse numérique…"
+                   disabled={expired}
                    className="w-full border-2 rounded-xl px-4 py-4 text-lg text-center font-semibold outline-none focus:border-indigo-400"
                    style={{ borderColor: '#e2e8f0' }} />
           </div>
@@ -608,33 +617,17 @@ function QuestionCard({ question, idx, total, answer, onAnswer, onPrev, onNext, 
                     onChange={e => onAnswer({ text_response: e.target.value })}
                     rows={8}
                     placeholder="Rédigez votre réponse ici…"
+                    disabled={expired}
                     className="w-full border-2 rounded-xl px-4 py-3 text-sm resize-none outline-none focus:border-amber-400"
                     style={{ borderColor: '#e2e8f0' }} />
         )}
-      </div>
-
-      {/* Nav buttons */}
-      <div className="flex items-center justify-between">
-        <button onClick={onPrev} disabled={idx === 0}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-30"
-                style={{ background: '#f1f5f9', color: '#374151' }}>
-          <ChevronLeft className="h-4 w-4" /> Précédente
-        </button>
-        <span className="text-xs" style={{ color: '#94a3b8' }}>
-          {idx + 1} / {total}
-        </span>
-        <button onClick={onNext} disabled={idx === total - 1}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-30"
-                style={{ background: '#f1f5f9', color: '#374151' }}>
-          Suivante <ChevronRight className="h-4 w-4" />
-        </button>
       </div>
     </div>
   );
 }
 
 /* ── QUESTION NAVIGATOR ──────────────────────────────────────────────────── */
-function QuestionNav({ questions, current, answers, onSelect, onSubmit, submitting }) {
+function QuestionNav({ questions, answers, onSelect, onSubmit, submitting }) {
   const answered = Object.values(answers).filter(a =>
     (a.choice_ids?.length > 0) || a.text_response?.trim() || a.numeric_response != null
   ).length;
@@ -653,20 +646,17 @@ function QuestionNav({ questions, current, answers, onSelect, onSubmit, submitti
         </div>
       </div>
 
-      {/* Dot grid */}
+      {/* Dot grid — jumps/scrolls to the question, all of them already visible below */}
       <div className="rounded-2xl p-4" style={{ background: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-        <p className="text-xs font-black mb-3" style={{ color: '#64748b' }}>NAVIGATION</p>
+        <p className="text-xs font-black mb-3" style={{ color: '#64748b' }}>ALLER À</p>
         <div className="grid grid-cols-5 gap-2">
           {questions.map((q, i) => {
             const a = answers[q.id];
             const done = !!(a?.choice_ids?.length || a?.text_response?.trim() || a?.numeric_response != null);
-            const isCurrent = i === current;
             return (
-              <button key={q.id} onClick={() => onSelect(i)}
+              <button key={q.id} onClick={() => onSelect(i)} title={`Question ${i + 1}`}
                       className="h-9 w-9 rounded-xl flex items-center justify-center text-xs font-bold transition-all"
-                      style={isCurrent
-                        ? { background: '#6366f1', color: 'white' }
-                        : done
+                      style={done
                         ? { background: '#f0fdf4', color: '#059669', border: '2px solid #86efac' }
                         : { background: '#f8fafc', color: '#94a3b8', border: '1.5px solid #e2e8f0' }}>
                 {i + 1}
@@ -812,104 +802,6 @@ function ResultsPage({ exam, questions, result, navigate }) {
             </div>
           ))}
         </div>
-
-        {/* Per-question breakdown */}
-        {(result?.answers || []).length > 0 && (
-          <div className="rounded-2xl overflow-hidden" style={{ background: 'white', boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}>
-            <div className="px-5 py-3 border-b" style={{ borderColor: '#f1f5f9' }}>
-              <h2 className="text-sm font-black" style={{ color: '#1e293b' }}>Détail des réponses</h2>
-            </div>
-            <div className="divide-y" style={{ '--tw-divide-color': '#f8fafc' }}>
-              {result.answers.map((a, i) => {
-                // Backend returns `question` (UUID), not `question_id`
-                const q = questions.find(x => String(x.id) === String(a.question)) || questions[i];
-                if (!q) return null;
-                const qType = a.question_type || q.question_type;
-                const meta  = QTYPE_META[qType] || QTYPE_META.QCU;
-                const pts   = Number(a.points_earned ?? 0);
-                const isPartial = a.is_correct !== true && pts > 0;
-                const iconColor = a.is_correct ? '#059669' : isPartial ? '#d97706' : '#ef4444';
-                const iconBg    = a.is_correct ? '#f0fdf4' : isPartial ? '#fffbeb' : '#fef2f2';
-                // Backend returns `selected_choice_ids`, not `choice_ids`
-                const pickedIds = a.selected_choice_ids || a.choice_ids || [];
-
-                return (
-                  <div key={i} className="px-5 py-4">
-                    <div className="flex items-start gap-3">
-                      <div className="h-6 w-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
-                           style={{ background: iconBg }}>
-                        {a.is_correct
-                          ? <CheckCircle className="h-4 w-4" style={{ color: '#059669' }} />
-                          : isPartial
-                          ? <AlertCircle className="h-4 w-4" style={{ color: '#d97706' }} />
-                          : <XCircle    className="h-4 w-4" style={{ color: '#ef4444' }} />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <span className="text-xs font-bold px-2 py-0.5 rounded-full"
-                                style={{ color: meta.color, background: meta.bg }}>{meta.label}</span>
-                          <span className="text-xs font-semibold" style={{ color: '#64748b' }}>Q{i + 1}</span>
-                          {isPartial && (
-                            <span className="text-xs font-bold px-2 py-0.5 rounded-full"
-                                  style={{ color: '#d97706', background: '#fffbeb' }}>Partielle</span>
-                          )}
-                        </div>
-                        <p className="text-sm font-medium mb-2" style={{ color: '#1e293b' }}
-                           dangerouslySetInnerHTML={{ __html: sanitizeRichText(a.question_text || q.text) }} />
-
-                        {/* Show correct choices */}
-                        {q.choices && q.choices.length > 0 && (
-                          <div className="space-y-1">
-                            {q.choices.map(c => {
-                              const studentPicked = pickedIds.includes(String(c.id));
-                              const correct       = c.is_correct;
-                              let style = {};
-                              if (correct && studentPicked) style = { background: '#f0fdf4', color: '#059669', borderColor: '#86efac' };
-                              else if (correct)             style = { background: '#f0fdf4', color: '#059669', borderColor: '#86efac' };
-                              else if (studentPicked)       style = { background: '#fef2f2', color: '#dc2626', borderColor: '#fca5a5' };
-                              else                          style = { color: '#94a3b8', borderColor: '#e2e8f0' };
-                              return (
-                                <div key={c.id} className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium"
-                                     style={style}>
-                                  {correct    && <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />}
-                                  {studentPicked && !correct && <XCircle className="h-3.5 w-3.5 flex-shrink-0" />}
-                                  {!correct && !studentPicked && <div className="h-3.5 w-3.5 flex-shrink-0" />}
-                                  <span>{c.text}</span>
-                                  {correct           && <span className="ml-auto text-[10px] font-black">Bonne réponse</span>}
-                                  {studentPicked && !correct && <span className="ml-auto text-[10px] font-black">Votre réponse</span>}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {/* Text answer */}
-                        {qType === 'TEXT' && a.text_response && (
-                          <div className="mt-2 px-3 py-2 rounded-lg text-xs" style={{ background: '#f8fafc', color: '#374151' }}>
-                            <span className="font-bold">Votre réponse : </span>{a.text_response}
-                          </div>
-                        )}
-
-                        {/* Score per question */}
-                        <div className="flex items-center justify-between mt-2">
-                          <span className="text-xs font-bold" style={{ color: iconColor }}>
-                            {pts} / {q.points || 1} point{(q.points || 1) > 1 ? 's' : ''}
-                          </span>
-                          {qType === 'TEXT' && a.is_correct == null && (
-                            <span className="text-xs" style={{ color: '#94a3b8' }}>Correction manuelle</span>
-                          )}
-                          {a.explanation && (
-                            <span className="text-xs italic" style={{ color: '#64748b' }}>{a.explanation}</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         <button onClick={() => navigate('/student/dashboard/elearning')}
                 className="w-full py-3.5 rounded-2xl text-sm font-bold text-white"
@@ -1378,6 +1270,8 @@ export default function ExamPage() {
   const [questions, setQuestions] = useState([]);
   const [answers, setAnswers]   = useState({});
   const [current, setCurrent]   = useState(0);
+  const [expiredIds, setExpiredIds] = useState(() => new Set());
+  const questionRefs = useRef({});
   const [timeLeft, setTimeLeft] = useState(0);
   const [flags, setFlags]       = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -1805,7 +1699,6 @@ export default function ExamPage() {
   }
 
   /* ── EXAM PHASE ── */
-  const q = questions[current];
   const timerPct   = (exam?.duration_minutes || 60) * 60;
   const pct        = timerPct > 0 ? (timeLeft / timerPct) * 100 : 0;
   const timerColor = timeLeft < 300 ? '#ef4444' : timeLeft < 600 ? '#d97706' : '#059669';
@@ -1946,26 +1839,31 @@ export default function ExamPage() {
           {effectiveTab === 'questions' && hasQuestions && (
             <>
               {/* Question area */}
-              <div className="flex-1 md:overflow-y-auto">
-                <QuestionCard
-                  question={q}
-                  idx={current}
-                  total={questions.length}
-                  answer={answers[q.id]}
-                  onAnswer={(data) => setAnswer(q.id, data)}
-                  onPrev={() => setCurrent(c => Math.max(0, c - 1))}
-                  onNext={() => setCurrent(c => Math.min(questions.length - 1, c + 1))}
-                  onExpire={() => setCurrent(c => Math.min(questions.length - 1, c + 1))}
-                />
+              <div className="flex-1 md:overflow-y-auto flex flex-col gap-4">
+                {questions.map((question, i) => (
+                  <div key={question.id} ref={el => { questionRefs.current[question.id] = el; }}>
+                    <QuestionCard
+                      question={question}
+                      idx={i}
+                      total={questions.length}
+                      answer={answers[question.id]}
+                      onAnswer={(data) => setAnswer(question.id, data)}
+                      expired={expiredIds.has(question.id)}
+                      onExpire={() => setExpiredIds(prev => new Set(prev).add(question.id))}
+                    />
+                  </div>
+                ))}
               </div>
 
               {/* Navigator */}
               <div className="w-full md:w-auto flex-shrink-0 md:overflow-y-auto">
                 <QuestionNav
                   questions={questions}
-                  current={current}
                   answers={answers}
-                  onSelect={setCurrent}
+                  onSelect={i => {
+                    setCurrent(i);
+                    questionRefs.current[questions[i].id]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
                   onSubmit={() => setShowSubmitModal(true)}
                   submitting={submitting}
                 />
