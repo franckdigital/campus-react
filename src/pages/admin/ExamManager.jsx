@@ -560,10 +560,10 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
             });
             quizId = quiz.id;
           }
-          await Promise.all(questions.map(async (q) => {
+          await Promise.all(questions.map(async (q, qIdx) => {
             const isNew = String(q.id).startsWith('new-');
             const qPayload = {
-              quiz: quizId, question_type: q.question_type, text: q.text,
+              quiz: quizId, question_type: q.question_type, text: q.text, order: qIdx,
               points: q.points || 1, time_limit: q.time_limit || 0, model_answer: q.model_answer || '',
             };
             const savedQ = isNew
@@ -594,9 +594,9 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
             title: `Quiz – ${form.title || 'Examen'}`, class_obj: null, subject: null,
           });
           quizId = quiz.id;
-          await Promise.all(questions.map(async (q) => {
+          await Promise.all(questions.map(async (q, qIdx) => {
             const savedQ = await elearningService.createQuestion({
-              quiz: quizId, question_type: q.question_type, text: q.text,
+              quiz: quizId, question_type: q.question_type, text: q.text, order: qIdx,
               points: q.points || 1, time_limit: q.time_limit || 0, model_answer: q.model_answer || '',
             });
             if (q.question_type !== 'TEXT') {
@@ -623,9 +623,9 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
               title: `Quiz – ${form.title || 'Examen'}`, class_obj: classId, subject: form.subject,
             });
             quizId = quiz.id;
-            await Promise.all(questions.map(async (q) => {
+            await Promise.all(questions.map(async (q, qIdx) => {
               const savedQ = await elearningService.createQuestion({
-                quiz: quizId, question_type: q.question_type, text: q.text,
+                quiz: quizId, question_type: q.question_type, text: q.text, order: qIdx,
                 points: q.points || 1, time_limit: q.time_limit || 0, model_answer: q.model_answer || '',
               });
               if (q.question_type !== 'TEXT') {
