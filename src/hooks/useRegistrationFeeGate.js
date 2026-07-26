@@ -17,6 +17,9 @@ export function useRegistrationFeeGate() {
   const [modality, setModality] = useState(null);
   const [tuitionUpToDate, setTuitionUpToDate] = useState(true);
   const [echeanceOverride, setEcheanceOverride] = useState(false);
+  // Hard admin on/off switch (Student.elearning_access), independent of
+  // payment/modality — see FeeGate's elearningGate handling.
+  const [elearningAccess, setElearningAccess] = useState(true);
 
   const check = useCallback(async () => {
     if (!user || user.user_type !== 'STUDENT') {
@@ -31,11 +34,13 @@ export function useRegistrationFeeGate() {
       setModality(student?.modality || null);
       setTuitionUpToDate(student?.tuition_up_to_date ?? true);
       setEcheanceOverride(!!student?.echeance_override);
+      setElearningAccess(student?.elearning_access ?? true);
     } catch {
       // Fail open — don't lock a student out of the whole app just because
       // this one lookup failed; the backend still enforces the real gate.
       setIsEnrolled(true);
       setTuitionUpToDate(true);
+      setElearningAccess(true);
     } finally {
       setLoading(false);
     }
@@ -45,7 +50,7 @@ export function useRegistrationFeeGate() {
 
   return {
     loading, isEnrolled, recheck: check,
-    modality, tuitionUpToDate, echeanceOverride,
+    modality, tuitionUpToDate, echeanceOverride, elearningAccess,
   };
 }
 
