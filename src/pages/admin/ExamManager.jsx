@@ -261,6 +261,17 @@ function QuestionEditor({ question, onChange, onDelete, idx }) {
                             placeholder="Saisissez la question ici…" minHeight={90} />
           </div>
 
+          {/* Question précise — distincte de l'énoncé/mise en situation
+              ci-dessus (utile pour un "cas pratique" avec un long contexte
+              suivi d'une question ciblée) */}
+          {question.question_type === 'TEXT' && (
+            <div>
+              <Lbl>Question</Lbl>
+              <RichTextEditor initialValue={question.question_prompt || ''} onChange={html => setField('question_prompt', html)}
+                              placeholder="La question précise posée à l'étudiant (optionnel si déjà incluse dans l'énoncé)…" minHeight={70} />
+            </div>
+          )}
+
           {/* Choices (QCU / QCM / TRUEFALSE) */}
           {(question.question_type === 'QCU' || question.question_type === 'QCM' || question.question_type === 'TRUEFALSE') && (
             <div>
@@ -306,14 +317,15 @@ function QuestionEditor({ question, onChange, onDelete, idx }) {
           {question.question_type === 'TEXT' && (
             <div>
               <Lbl>Réponse modèle (pour correction)</Lbl>
-              <textarea value={question.model_answer || ''}
-                        onChange={e => setField('model_answer', e.target.value)}
+              <textarea value={question.text_answer || ''}
+                        onChange={e => setField('text_answer', e.target.value)}
                         rows={3}
                         placeholder="Réponse attendue (aide à la correction)…"
                         className="w-full px-3 py-2 rounded-xl text-sm border resize-none outline-none"
                         style={{ borderColor: '#e2e8f0', background: '#f8fafc' }} />
               <p className="text-xs mt-1" style={{ color: '#94a3b8' }}>
-                Les réponses texte requièrent une correction manuelle ou via IA.
+                Uniquement une aide pour le professeur — les réponses texte des examens sécurisés sont
+                toujours corrigées manuellement, jamais notées automatiquement.
               </p>
             </div>
           )}
@@ -455,9 +467,10 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
             id: q.id,
             question_type: q.question_type,
             text: q.text,
+            question_prompt: q.question_prompt || '',
             points: q.points || 1,
             time_limit: q.time_limit || 0,
-            model_answer: q.model_answer || '',
+            text_answer: q.text_answer || '',
             choices: (q.choices || []).map(c => ({ id: c.id, text: c.text, is_correct: c.is_correct })),
           }));
           setQuestions(loaded);
@@ -486,9 +499,10 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
       id: `new-${Date.now()}`,
       question_type: type,
       text: '',
+      question_prompt: '',
       points: 1,
       time_limit: 0,
-      model_answer: '',
+      text_answer: '',
       choices: isVF
         ? [{ id: 'vrai', text: 'Vrai', is_correct: true }, { id: 'faux', text: 'Faux', is_correct: false }]
         : [
@@ -563,8 +577,8 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
           await Promise.all(questions.map(async (q, qIdx) => {
             const isNew = String(q.id).startsWith('new-');
             const qPayload = {
-              quiz: quizId, question_type: q.question_type, text: q.text, order: qIdx,
-              points: q.points || 1, time_limit: q.time_limit || 0, model_answer: q.model_answer || '',
+              quiz: quizId, question_type: q.question_type, text: q.text, question_prompt: q.question_prompt || '', order: qIdx,
+              points: q.points || 1, time_limit: q.time_limit || 0, text_answer: q.text_answer || '',
             };
             const savedQ = isNew
               ? await elearningService.createQuestion(qPayload)
@@ -596,8 +610,8 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
           quizId = quiz.id;
           await Promise.all(questions.map(async (q, qIdx) => {
             const savedQ = await elearningService.createQuestion({
-              quiz: quizId, question_type: q.question_type, text: q.text, order: qIdx,
-              points: q.points || 1, time_limit: q.time_limit || 0, model_answer: q.model_answer || '',
+              quiz: quizId, question_type: q.question_type, text: q.text, question_prompt: q.question_prompt || '', order: qIdx,
+              points: q.points || 1, time_limit: q.time_limit || 0, text_answer: q.text_answer || '',
             });
             if (q.question_type !== 'TEXT') {
               await Promise.all((q.choices || []).map(c => {
@@ -625,8 +639,8 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
             quizId = quiz.id;
             await Promise.all(questions.map(async (q, qIdx) => {
               const savedQ = await elearningService.createQuestion({
-                quiz: quizId, question_type: q.question_type, text: q.text, order: qIdx,
-                points: q.points || 1, time_limit: q.time_limit || 0, model_answer: q.model_answer || '',
+                quiz: quizId, question_type: q.question_type, text: q.text, question_prompt: q.question_prompt || '', order: qIdx,
+                points: q.points || 1, time_limit: q.time_limit || 0, text_answer: q.text_answer || '',
               });
               if (q.question_type !== 'TEXT') {
                 await Promise.all((q.choices || []).map(c => {

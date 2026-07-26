@@ -40,6 +40,7 @@ export default function Students() {
   const [showEnrollmentModal, setShowEnrollmentModal] = useState(false);
   const [actionModal, setActionModal] = useState(null);
   const [togglingOverrideId, setTogglingOverrideId] = useState(null);
+  const [togglingElearningId, setTogglingElearningId] = useState(null);
 
   const [confirmModal, setConfirmModal] = useState(null); // { message, onConfirm }
 
@@ -378,6 +379,29 @@ export default function Students() {
     }
   };
 
+  // Direct admin on/off switch for e-learning access (Student.elearning_access)
+  // — independent of the payment échéancier above: this is a flat lockout the
+  // administration can flip for any reason (disciplinaire, suspension
+  // temporaire...), enforced by FeeGate's elearningGate on the student side.
+  const handleToggleElearningAccess = async (student) => {
+    const next = !(student.elearning_access ?? true);
+    setTogglingElearningId(student.id);
+    try {
+      await studentsService.update(student.id, { elearning_access: next });
+      notify(
+        next
+          ? "Accès e-learning réactivé pour cet étudiant."
+          : "Accès e-learning désactivé pour cet étudiant.",
+        'success'
+      );
+      fetchStudents();
+    } catch (err) {
+      notify(err?.message || "Erreur lors de la mise à jour de l'accès e-learning", 'error');
+    } finally {
+      setTogglingElearningId(null);
+    }
+  };
+
   const handleCreateProgram = async (name) => {
     const siteId = formData.site_id || (selectedSite !== 'all' ? selectedSite : null);
     if (!siteId) { notify('Sélectionnez un site', 'error'); throw new Error(); }
@@ -538,7 +562,7 @@ export default function Students() {
             <table className="w-full">
               <thead>
                 <tr style={{ background: 'linear-gradient(135deg,#fafbff,#f8fafc)', borderBottom: '1px solid #f0f4f9' }}>
-                  {['Matricule','Étudiant','Email','Programme','Inscription','Scolarité','Statut',''].map((h, i) => (
+                  {['Matricule','Étudiant','Email','Programme','Inscription','Scolarité','Accès eLearning','Statut',''].map((h, i) => (
                     <th key={i} className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider whitespace-nowrap"
                         style={{ color: '#94a3b8' }}>{h}</th>
                   ))}
@@ -621,6 +645,31 @@ export default function Students() {
                         ) : (
                           <span className="text-[11px]" style={{ color: '#cbd5e1' }}>—</span>
                         )}
+                      </td>
+
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap"
+                                style={(student.elearning_access ?? true)
+                                  ? { color: '#059669', background: '#d1fae5' }
+                                  : { color: '#dc2626', background: '#fee2e2' }}>
+                            <span className="h-1.5 w-1.5 rounded-full flex-shrink-0"
+                                  style={{ background: (student.elearning_access ?? true) ? '#059669' : '#dc2626' }} />
+                            {(student.elearning_access ?? true) ? 'Activé' : 'Désactivé'}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={togglingElearningId === student.id}
+                            onClick={() => handleToggleElearningAccess(student)}
+                            title={(student.elearning_access ?? true)
+                              ? "Désactiver l'accès e-learning de cet étudiant"
+                              : "Réactiver l'accès e-learning de cet étudiant"}
+                            className="relative inline-flex h-4 w-8 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50"
+                            style={{ background: (student.elearning_access ?? true) ? '#059669' : '#cbd5e1' }}>
+                            <span className="inline-block h-3 w-3 rounded-full bg-white shadow transition-transform"
+                                  style={{ transform: (student.elearning_access ?? true) ? 'translateX(17px)' : 'translateX(2px)' }} />
+                          </button>
+                        </div>
                       </td>
 
                       <td className="px-4 py-2.5">

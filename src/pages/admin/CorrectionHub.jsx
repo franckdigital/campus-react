@@ -875,12 +875,23 @@ function ExamSessionRow({ session: s, exam, notify, onGraded }) {
     finally { setAutoFilling(false); }
   };
 
+  // The étudiant's actual submitted answer per question — without this map,
+  // the panel below only ever had q.text (the question's own statement) to
+  // show, with no way to display what the student actually wrote, so a
+  // teacher grading a TEXT question saw the question again instead of the
+  // response they're supposed to be correcting.
+  const answerMap = useMemo(() => {
+    const m = {};
+    (attemptData?.answers || []).forEach(a => { m[a.question] = a; });
+    return m;
+  }, [attemptData]);
+
   const rows = useMemo(() => questions.map(q => {
     const maxPts = parseFloat(q.points) || 1;
     const val = qScores[q.id];
     const earned = val !== undefined ? (parseFloat(val) || 0) : null;
-    return { q, maxPts, earned };
-  }), [questions, qScores]);
+    return { q, ans: answerMap[q.id], maxPts, earned };
+  }), [questions, qScores, answerMap]);
 
   const totalMax = rows.reduce((s, r) => s + r.maxPts, 0);
   const totalEarned = rows.reduce((s, r) => s + (r.earned ?? 0), 0);
@@ -1071,11 +1082,29 @@ function ExamSessionRow({ session: s, exam, notify, onGraded }) {
                 </span>
               </div>
               <div className="divide-y bg-white" style={{ borderColor: '#f8fafc' }}>
-                {rows.map(({ q, maxPts, earned }, i) => (
-                  <div key={q.id} className="px-4 py-3 flex items-center gap-3">
+                {rows.map(({ q, ans, maxPts, earned }, i) => (
+                  <div key={q.id} className="px-4 py-3 flex items-start gap-3">
                     <span className="h-6 w-6 rounded-md flex items-center justify-center text-[10px] font-extrabold flex-shrink-0"
                           style={{ background: '#fef3c7', color: A }}>{i + 1}</span>
-                    <p className="text-xs font-semibold flex-1 truncate" style={{ color: '#334155' }}>{stripHtml(q.text)}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold truncate" style={{ color: '#334155' }}>{stripHtml(q.text)}</p>
+                      {q.question_prompt?.trim() && (
+                        <p className="text-xs font-semibold mt-0.5" style={{ color: '#7c3aed' }}>{stripHtml(q.question_prompt)}</p>
+                      )}
+                      {q.question_type === 'TEXT' ? (
+                        ans?.text_response?.trim() ? (
+                          <p className="text-xs mt-1 whitespace-pre-wrap rounded-lg px-2.5 py-2" style={{ color: '#334155', background: '#f8fafc' }}>
+                            {ans.text_response}
+                          </p>
+                        ) : (
+                          <p className="text-[11px] italic mt-1" style={{ color: '#cbd5e1' }}>Aucune réponse rédigée par l'étudiant.</p>
+                        )
+                      ) : (
+                        ans?.text_response && (
+                          <p className="text-[11px] italic mt-0.5 line-clamp-2" style={{ color: '#64748b' }}>↳ {ans.text_response}</p>
+                        )
+                      )}
+                    </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <input
                         type="number" min="0" max={maxPts} step="0.5"
