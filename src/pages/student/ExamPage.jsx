@@ -12,7 +12,7 @@ import PdfModal from '../../components/exam/PdfModal';
 import RichTextEditor from '../../components/exam/RichTextEditor';
 import CalculatorWidget from '../../components/exam/CalculatorWidget';
 import DraftPad from '../../components/exam/DraftPad';
-import { sanitizeRichText } from '../../utils/richText';
+import { sanitizeRichText, stripHtml } from '../../utils/richText';
 
 /* ── constants ───────────────────────────────────────────────────────────── */
 const LOG_COOLDOWN      = 3000;
@@ -539,7 +539,7 @@ function QuestionTimer({ limit, onExpire }) {
   );
 }
 
-function QuestionCard({ question, idx, total, answer, onAnswer, expired, onExpire }) {
+function QuestionCard({ question, idx, total, answer, onAnswer, expired, onExpire, registerEditorRef, onFocusAnswer }) {
   const choices   = question.choices || [];
   const choiceIds = answer?.choice_ids || [];
   const meta      = QTYPE_META[question.question_type] || QTYPE_META.QCU;
@@ -650,13 +650,14 @@ function QuestionCard({ question, idx, total, answer, onAnswer, expired, onExpir
                    style={{ borderColor: '#e2e8f0' }} />
           </div>
         ) : (
-          <textarea value={answer?.text_response || ''}
-                    onChange={e => onAnswer({ text_response: e.target.value })}
-                    rows={8}
-                    placeholder="Rédigez votre réponse ici…"
-                    disabled={expired}
-                    className="w-full border-2 rounded-xl px-4 py-3 text-sm resize-none outline-none focus:border-amber-400"
-                    style={{ borderColor: '#e2e8f0' }} />
+          <RichTextEditor
+            ref={registerEditorRef}
+            initialValue={answer?.text_response || ''}
+            onChange={html => onAnswer({ text_response: html })}
+            onFocus={onFocusAnswer}
+            placeholder="Rédigez votre réponse ici…"
+            minHeight={200}
+          />
         )}
       </div>
     </div>
@@ -666,7 +667,7 @@ function QuestionCard({ question, idx, total, answer, onAnswer, expired, onExpir
 /* ── QUESTION NAVIGATOR ──────────────────────────────────────────────────── */
 function QuestionNav({ questions, answers, onSelect, onSubmit, submitting }) {
   const answered = Object.values(answers).filter(a =>
-    (a.choice_ids?.length > 0) || a.text_response?.trim() || a.numeric_response != null
+    (a.choice_ids?.length > 0) || stripHtml(a.text_response) || a.numeric_response != null
   ).length;
   const total = questions.length;
 
@@ -689,7 +690,7 @@ function QuestionNav({ questions, answers, onSelect, onSubmit, submitting }) {
         <div className="grid grid-cols-5 gap-2">
           {questions.map((q, i) => {
             const a = answers[q.id];
-            const done = !!(a?.choice_ids?.length || a?.text_response?.trim() || a?.numeric_response != null);
+            const done = !!(a?.choice_ids?.length || stripHtml(a?.text_response) || a?.numeric_response != null);
             return (
               <button key={q.id} onClick={() => onSelect(i)} title={`Question ${i + 1}`}
                       className="h-9 w-9 rounded-xl flex items-center justify-center text-xs font-bold transition-all"
@@ -1391,6 +1392,14 @@ export default function ExamPage() {
   const [current, setCurrent]   = useState(0);
   const [expiredIds, setExpiredIds] = useState(() => new Set());
   const questionRefs = useRef({});
+  // Calculator/Brouillon on the QCM/questions screen (mirrors the PDF-answer
+  // section's widgets) — textEditorRefs + activeTextQuestionId let the
+  // calculator's "Insérer" button target whichever TEXT question's rich-text
+  // editor the student last focused, since several may be on screen at once.
+  const textEditorRefs = useRef({});
+  const [activeTextQuestionId, setActiveTextQuestionId] = useState(null);
+  const [quizCalculatorOpen, setQuizCalculatorOpen] = useState(false);
+  const [quizDraftOpen, setQuizDraftOpen] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
   const [flags, setFlags]       = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -1840,7 +1849,7 @@ export default function ExamPage() {
   const pct        = timerPct > 0 ? (timeLeft / timerPct) * 100 : 0;
   const timerColor = timeLeft < 300 ? '#ef4444' : timeLeft < 600 ? '#d97706' : '#059669';
   const answered = Object.values(answers).filter(a =>
-    (a.choice_ids?.length > 0) || a.text_response?.trim() || a.numeric_response != null
+    (a.choice_ids?.length > 0) || stripHtml(a.text_response) || a.numeric_response != null
   ).length;
   const hasQuestions = questions.length > 0;
   const hasPdfAnswer = !!exam?.exam_pdf;
@@ -1879,6 +1888,15 @@ export default function ExamPage() {
       )}
       {breakState && (
         <BreakModal index={breakState.index} until={breakState.until} onResume={() => setBreakState(null)} />
+      )}
+      {quizCalculatorOpen && (
+        <CalculatorWidget
+          onClose={() => setQuizCalculatorOpen(false)}
+          onInsert={activeTextQuestionId ? (text => textEditorRefs.current[activeTextQuestionId]?.insertText(text)) : undefined}
+        />
+      )}
+      {quizDraftOpen && (
+        <DraftPad examId={examId} onClose={() => setQuizDraftOpen(false)} />
       )}
       <style>{`@keyframes fadeInUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}`}</style>
 
@@ -1984,6 +2002,21 @@ export default function ExamPage() {
             <>
               {/* Question area */}
               <div className="flex-1 md:overflow-y-auto flex flex-col gap-4">
+                {/* Calculator/Brouillon — available for every question type,
+                    not just the PDF-answer section, so a QCM/numeric/TEXT
+                    question can be worked out the same way. */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={() => setQuizDraftOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold"
+                    style={{ background: '#cffafe', color: '#0e7490' }}>
+                    <NotebookPen className="h-3.5 w-3.5" /> Brouillon
+                  </button>
+                  <button onClick={() => setQuizCalculatorOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold"
+                    style={{ background: '#ede9fe', color: '#6d28d9' }}>
+                    <CalculatorIcon className="h-3.5 w-3.5" /> Calculatrice
+                  </button>
+                </div>
                 {questions.map((question, i) => (
                   <div key={question.id} ref={el => { questionRefs.current[question.id] = el; }}>
                     <QuestionCard
@@ -1994,6 +2027,8 @@ export default function ExamPage() {
                       onAnswer={(data) => setAnswer(question.id, data)}
                       expired={expiredIds.has(question.id)}
                       onExpire={() => setExpiredIds(prev => new Set(prev).add(question.id))}
+                      registerEditorRef={question.question_type === 'TEXT' ? (el => { textEditorRefs.current[question.id] = el; }) : undefined}
+                      onFocusAnswer={question.question_type === 'TEXT' ? (() => setActiveTextQuestionId(question.id)) : undefined}
                     />
                   </div>
                 ))}

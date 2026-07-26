@@ -50,7 +50,7 @@ function ToolButton({ onClick, title, active, children }) {
  * change) — a controlled `value` prop here would fight the browser's own
  * caret/selection handling on every keystroke.
  */
-const RichTextEditor = forwardRef(function RichTextEditor({ initialValue = '', onChange, placeholder, minHeight = 260 }, forwardedRef) {
+const RichTextEditor = forwardRef(function RichTextEditor({ initialValue = '', onChange, placeholder, minHeight = 260, onFocus }, forwardedRef) {
   const ref = useRef(null);
   const initialized = useRef(false);
   const savedRangeRef = useRef(null);
@@ -195,6 +195,7 @@ const RichTextEditor = forwardRef(function RichTextEditor({ initialValue = '', o
           suppressContentEditableWarning
           onInput={emitChange}
           onBlur={emitChange}
+          onFocus={onFocus}
           onMouseUp={trackSelection}
           onKeyUp={trackSelection}
           className="w-full px-4 py-3 text-sm outline-none"
