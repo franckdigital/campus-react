@@ -1093,9 +1093,18 @@ function ExamSessionRow({ session: s, exam, notify, onGraded }) {
                       )}
                       {q.question_type === 'TEXT' ? (
                         ans?.text_response?.trim() ? (
-                          <p className="text-xs mt-1 whitespace-pre-wrap rounded-lg px-2.5 py-2" style={{ color: '#334155', background: '#f8fafc' }}>
-                            {ans.text_response}
-                          </p>
+                          <div className="text-xs mt-1 rounded-lg px-2.5 py-2" style={{ color: '#334155', background: '#f8fafc' }}
+                               dangerouslySetInnerHTML={{
+                                 __html: DOMPurify.sanitize(
+                                   // Answers written before the WYSIWYG editor was
+                                   // added to this question type were saved as
+                                   // plain text — preserve their line breaks, since
+                                   // a bare "\n" renders as nothing in HTML.
+                                   /<[a-z][\s\S]*>/i.test(ans.text_response)
+                                     ? ans.text_response
+                                     : ans.text_response.replace(/\n/g, '<br>')
+                                 ),
+                               }} />
                         ) : (
                           <p className="text-[11px] italic mt-1" style={{ color: '#cbd5e1' }}>Aucune réponse rédigée par l'étudiant.</p>
                         )
