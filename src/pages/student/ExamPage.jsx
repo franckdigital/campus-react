@@ -2004,15 +2004,18 @@ export default function ExamPage() {
               <div className="flex-1 md:overflow-y-auto flex flex-col gap-4">
                 {/* Calculator/Brouillon — available for every question type,
                     not just the PDF-answer section, so a QCM/numeric/TEXT
-                    question can be worked out the same way. */}
-                <div className="flex items-center gap-2 flex-shrink-0">
+                    question can be worked out the same way. Sticky so it
+                    stays reachable while scrolling through 10+ questions
+                    instead of scrolling out of view after question 1. */}
+                <div className="sticky top-0 z-10 flex items-center gap-2 flex-shrink-0 py-1 -mx-1 px-1"
+                     style={{ background: 'linear-gradient(#f8fafc 70%, transparent)' }}>
                   <button onClick={() => setQuizDraftOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold shadow-sm"
                     style={{ background: '#cffafe', color: '#0e7490' }}>
                     <NotebookPen className="h-3.5 w-3.5" /> Brouillon
                   </button>
                   <button onClick={() => setQuizCalculatorOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold shadow-sm"
                     style={{ background: '#ede9fe', color: '#6d28d9' }}>
                     <CalculatorIcon className="h-3.5 w-3.5" /> Calculatrice
                   </button>
