@@ -6,7 +6,7 @@ import {
   Save, ChevronLeft, ChevronRight, Info, Lock, Check, Minus,
   BookOpen, Settings, Play, Eye, GripVertical, CheckSquare, Calendar,
 } from 'lucide-react';
-import { elearningService } from '../../services';
+import { elearningService, academicService } from '../../services';
 import { useApi } from '../../hooks/useApi';
 import { IconBtn, Pagination } from '../../components/ui/PageHeader';
 import { useConfirm } from '../../components/ConfirmDialog';
@@ -421,7 +421,7 @@ function PdfSection({ examPdf, examPdfUrl, onFileChange, pdfDuration, onPdfDurat
 }
 
 /* ── EXAM BUILDER MODAL ──────────────────────────────────────────────────── */
-function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsList = [], sitesList = [], onSaved, notify = () => {} }) {
+function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsList = [], sitesList = [], teachersList = [], showTeacherField = true, onSaved, notify = () => {} }) {
   const [tab, setTab]         = useState('info');
   const [loading, setLoading] = useState(false);
   const [questions, setQuestions] = useState([]);
@@ -433,7 +433,7 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
   const loadedQuestionsRef = useRef('[]');
 
   const blank = {
-    title: '', description: '', class_objs: [], subject: '',
+    title: '', description: '', class_objs: [], subject: '', teacher: '',
     is_global: false, site: '',
     exam_type: 'FINAL', duration_minutes: 60, start_date: '', end_date: '',
     max_attempts: 1, pass_score_percent: 50, coefficient: 1,
@@ -453,6 +453,7 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
         ...blank, ...editing,
         class_objs: editing.class_obj ? [String(editing.class_obj)] : [],
         subject:    String(editing.subject || ''),
+        teacher:    String(editing.teacher || ''),
         is_global:  !!editing.is_global,
         site:       String(editing.site || ''),
         start_date: editing.start_date?.slice(0, 16) || '',
@@ -597,7 +598,7 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
 
         const savedExam = await elearningService.updateSecureExam(editing.id, {
           ...basePayload, class_obj: classId, subject: form.is_global ? null : form.subject, quiz: quizId,
-          site: form.is_global ? (form.site || null) : null,
+          site: form.is_global ? (form.site || null) : null, teacher: form.teacher || null,
         });
         await uploadPdfIfAny(savedExam?.id);
       } else if (form.is_global) {
@@ -623,6 +624,7 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
         }
         const exam = await elearningService.createSecureExam({
           ...basePayload, class_obj: null, subject: null, quiz: quizId, site: form.site || null,
+          teacher: form.teacher || null,
         });
         await uploadPdfIfAny(exam?.id);
       } else {
@@ -650,7 +652,9 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
               }
             }));
           }
-          const exam = await elearningService.createSecureExam({ ...basePayload, class_obj: classId, quiz: quizId });
+          const exam = await elearningService.createSecureExam({
+            ...basePayload, class_obj: classId, quiz: quizId, teacher: form.teacher || null,
+          });
           await uploadPdfIfAny(exam?.id);
         }
       }
@@ -793,6 +797,21 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
                       {subjectsList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                   </div>
+                </div>
+              )}
+              {showTeacherField && (
+                <div>
+                  <Lbl>Enseignant</Lbl>
+                  <select value={form.teacher} onChange={e => F('teacher')(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl text-sm border outline-none"
+                          style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
+                    <option value="">Non assigné</option>
+                    {teachersList.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
+                  </select>
+                  <p className="text-[10px] mt-1" style={{ color: '#94a3b8' }}>
+                    Cet enseignant verra l'examen dans son espace (session), même sans affectation classe/matière
+                    correspondante pour lui.
+                  </p>
                 </div>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1181,7 +1200,7 @@ function ProctorDashboard({ examId, sessions, onClose, onRefresh }) {
 }
 
 /* ── MAIN EXAM MANAGER ───────────────────────────────────────────────────── */
-export default function ExamManager({ classesList = [], subjectsList = [], selectedClass, notify = () => {} }) {
+export default function ExamManager({ classesList = [], subjectsList = [], selectedClass, notify = () => {}, showTeacherField = true }) {
   const [page, setPage]         = useState(1);
   const [search, setSearch]     = useState('');
   const [viewTab, setViewTab]   = useState('exams'); // 'exams' | 'bank'
@@ -1190,6 +1209,15 @@ export default function ExamManager({ classesList = [], subjectsList = [], selec
   const [showSessions, setShowSessions] = useState(null);
   const confirm = useConfirm();
   const { sites } = useSite();
+  // Only admin/staff assign a teacher explicitly (see showTeacherField) —
+  // skip fetching the full teacher list from the teacher-facing reuse of
+  // this component (TeacherExams.jsx), where it'd be both unused and a
+  // pointless extra request.
+  const { data: teachersData } = useApi(
+    () => academicService.getTeachers({ page_size: 200, is_active: true }),
+    [], showTeacherField
+  );
+  const teachersList = showTeacherField ? (teachersData?.results || teachersData || []) : [];
 
   const classFilter = selectedClass && selectedClass !== 'all' ? { class_obj: selectedClass } : {};
   const { data, refetch } = useApi(() => elearningService.getSecureExams({ ...classFilter, page_size: 200 }), [selectedClass], true);
@@ -1317,6 +1345,11 @@ export default function ExamManager({ classesList = [], subjectsList = [], selec
                           </div>
                           <div className="flex items-center gap-3 text-xs flex-wrap" style={{ color: '#64748b' }}>
                             <span>{exam.is_global ? `Ouvert à tous — ${exam.site_name || 'tous les sites'}` : `${exam.class_name} — ${exam.subject_name}`}</span>
+                            {exam.teacher_name && (
+                              <span className="flex items-center gap-1">
+                                <Users className="h-3 w-3" />{exam.teacher_name}
+                              </span>
+                            )}
                             <span className="flex items-center gap-1">
                               <Clock className="h-3 w-3" />{exam.duration_minutes} min
                             </span>
@@ -1371,6 +1404,8 @@ export default function ExamManager({ classesList = [], subjectsList = [], selec
         classesList={classesList}
         subjectsList={subjectsList}
         sitesList={sites}
+        teachersList={teachersList}
+        showTeacherField={showTeacherField}
         onSaved={handleSaved}
         notify={notify}
       />
