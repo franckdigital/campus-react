@@ -381,7 +381,9 @@ function BatchQuestionEditor({ quiz, editingQuestion, onClose, onSaved, notify }
 
 function QuizBuilderModal({ quiz, onClose, notify, onUpdated }) {
   const { data: questionsData, refetch } = useApi(() => elearningService.getQuestions(quiz.id), [quiz.id], true);
-  const questions = (questionsData?.results || questionsData || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+  const byOrder = (a, b) => (a.order || 0) - (b.order || 0);
+  const questions = (questionsData?.results || questionsData || []).slice().sort(byOrder)
+    .map(q => ({ ...q, choices: [...(q.choices || [])].sort(byOrder) }));
   const [showEditor, setShowEditor] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState(null);
   const confirm = useConfirm();

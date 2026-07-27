@@ -216,7 +216,9 @@ function QuizBuilderTab({ assignment, notify, onQuizLinked }) {
     () => assignment.quiz ? elearningService.getQuestions(assignment.quiz) : Promise.resolve([]),
     [assignment.quiz], !!assignment.quiz
   );
-  const questions = (questionsData?.results ?? questionsData ?? []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+  const questions = (questionsData?.results ?? questionsData ?? []).slice()
+    .sort((a, b) => (a.order || 0) - (b.order || 0))
+    .map(q => ({ ...q, choices: [...(q.choices || [])].sort((a, b) => (a.order || 0) - (b.order || 0)) }));
 
   const ensureQuiz = async () => {
     if (assignment.quiz) return assignment.quiz;

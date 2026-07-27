@@ -351,7 +351,16 @@ export default function StudentQuizPage() {
       const att = await elearningService.startQuizAttempt(quizId);
       setAttempt(att);
       const q = await elearningService.takeQuiz(quizId);
-      const qs = q.questions || [];
+      // Top-level question order is intentionally shuffled server-side when
+      // shuffle_questions is on — left as-is. Each question's own choices
+      // are NOT meant to be shuffled though, and questions/choices saved
+      // before the admin builder sent an explicit order (or not yet
+      // backfilled server-side) all tie at order=0, showing them in an
+      // arbitrary sequence — sort explicitly rather than trust array order.
+      const qs = (q.questions || []).map(qq => ({
+        ...qq,
+        choices: [...(qq.choices || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+      }));
       setQuestions(qs);
       if (q.time_limit_minutes > 0) setTimeLeft(q.time_limit_minutes * 60);
       setPhase('quiz');

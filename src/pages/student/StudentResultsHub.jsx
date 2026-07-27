@@ -221,7 +221,15 @@ function QuizDetailPanel({ quiz, bestAttempt }) {
     () => elearningService.getQuestions(quiz.id),
     [quiz.id], true,
   );
-  const questions = questionsData?.results ?? (Array.isArray(questionsData) ? questionsData : []);
+  // Sorted explicitly by `order` — questions/choices saved before the admin
+  // builder sent an explicit order (or not yet backfilled server-side) all
+  // tie at order=0, which showed the student's own review a different
+  // question/choice sequence than the one they actually answered.
+  const questions = useMemo(() => {
+    const list = questionsData?.results ?? (Array.isArray(questionsData) ? questionsData : []);
+    const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0);
+    return [...list].sort(byOrder).map(q => ({ ...q, choices: [...(q.choices || [])].sort(byOrder) }));
+  }, [questionsData]);
 
   const answerMap = useMemo(() => {
     const m = {};
