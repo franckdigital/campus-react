@@ -14,7 +14,7 @@ export default function TeacherExams() {
           Créez et gérez les examens sécurisés de vos classes
         </p>
       </div>
-      <ExamManager classesList={classesList} subjectsList={subjectsList} notify={notify} />
+      <ExamManager classesList={classesList} subjectsList={subjectsList} notify={notify} showTeacherField={false} />
     </div>
   );
 }
