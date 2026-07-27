@@ -464,7 +464,13 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
         setQuizLoading(true);
         elearningService.getQuestions(editing.quiz).then(res => {
           const qs = Array.isArray(res) ? res : res?.results || [];
-          const loaded = qs.map(q => ({
+          // Sort explicitly by `order` rather than trusting the array as
+          // received — questions/choices saved before this order fix (or
+          // not yet backfilled server-side) all tie at order=0, which made
+          // the admin editor itself show/re-save them in an arbitrary order
+          // that didn't match what the teacher originally typed.
+          const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0);
+          const loaded = [...qs].sort(byOrder).map(q => ({
             id: q.id,
             question_type: q.question_type,
             text: q.text,
@@ -472,7 +478,7 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
             points: q.points || 1,
             time_limit: q.time_limit || 0,
             text_answer: q.text_answer || '',
-            choices: (q.choices || []).map(c => ({ id: c.id, text: c.text, is_correct: c.is_correct })),
+            choices: [...(q.choices || [])].sort(byOrder).map(c => ({ id: c.id, text: c.text, is_correct: c.is_correct })),
           }));
           setQuestions(loaded);
           loadedQuestionsRef.current = JSON.stringify(loaded);
@@ -585,9 +591,9 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
               ? await elearningService.createQuestion(qPayload)
               : await elearningService.updateQuestion(q.id, qPayload);
             if (q.question_type !== 'TEXT') {
-              await Promise.all((q.choices || []).map(c => {
+              await Promise.all((q.choices || []).map((c, cIdx) => {
                 if (!c.text?.trim()) return null;
-                const cPayload = { question: savedQ.id, text: c.text.trim(), is_correct: !!c.is_correct };
+                const cPayload = { question: savedQ.id, text: c.text.trim(), is_correct: !!c.is_correct, order: cIdx };
                 const isNewChoice = typeof c.id === 'string' && (c.id.startsWith('c') || c.id === 'vrai' || c.id === 'faux');
                 if (isNew || isNewChoice) return elearningService.createChoice(cPayload);
                 return elearningService.updateChoice(c.id, cPayload).catch(() => {});
@@ -615,9 +621,9 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
               points: q.points || 1, time_limit: q.time_limit || 0, text_answer: q.text_answer || '',
             });
             if (q.question_type !== 'TEXT') {
-              await Promise.all((q.choices || []).map(c => {
+              await Promise.all((q.choices || []).map((c, cIdx) => {
                 if (!c.text?.trim()) return null;
-                return elearningService.createChoice({ question: savedQ.id, text: c.text.trim(), is_correct: !!c.is_correct });
+                return elearningService.createChoice({ question: savedQ.id, text: c.text.trim(), is_correct: !!c.is_correct, order: cIdx });
               }));
             }
           }));
@@ -645,9 +651,9 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
                 points: q.points || 1, time_limit: q.time_limit || 0, text_answer: q.text_answer || '',
               });
               if (q.question_type !== 'TEXT') {
-                await Promise.all((q.choices || []).map(c => {
+                await Promise.all((q.choices || []).map((c, cIdx) => {
                   if (!c.text?.trim()) return null;
-                  return elearningService.createChoice({ question: savedQ.id, text: c.text.trim(), is_correct: !!c.is_correct });
+                  return elearningService.createChoice({ question: savedQ.id, text: c.text.trim(), is_correct: !!c.is_correct, order: cIdx });
                 }));
               }
             }));

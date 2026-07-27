@@ -150,7 +150,15 @@ function AssignmentPerQuestionPanel({ sub, assignment, setForm, onApplyAndSave }
     [quizId], !!quizId,
   );
 
-  const questions = useMemo(() => (questionsData?.results ?? (Array.isArray(questionsData) ? questionsData : [])), [questionsData]);
+  // Sorted explicitly by `order` — questions/choices saved before the admin
+  // builder sent an explicit order (or not yet backfilled server-side) all
+  // tie at order=0, which showed the correcting teacher a different
+  // question/choice sequence than the one the student actually answered.
+  const questions = useMemo(() => {
+    const list = questionsData?.results ?? (Array.isArray(questionsData) ? questionsData : []);
+    const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0);
+    return [...list].sort(byOrder).map(q => ({ ...q, choices: [...(q.choices || [])].sort(byOrder) }));
+  }, [questionsData]);
   const allAttempts = useMemo(() => (attemptsData?.results ?? (Array.isArray(attemptsData) ? attemptsData : [])), [attemptsData]);
   const studentAttempt = useMemo(() =>
     allAttempts.find(a => String(a.student) === String(sub.student) || String(a.student_id) === String(sub.student)),
@@ -775,7 +783,13 @@ function ExamSessionRow({ session: s, exam, notify, onGraded }) {
     () => open && quizId ? elearningService.getQuestions(quizId) : Promise.resolve(null),
     [open, quizId], open && !!quizId,
   );
-  const questions = questionsData?.results ?? (Array.isArray(questionsData) ? questionsData : []);
+  // Sorted explicitly by `order` — see the same fix in the other correction
+  // panel above, same reasoning (order=0 ties on un-backfilled data).
+  const questions = (() => {
+    const list = questionsData?.results ?? (Array.isArray(questionsData) ? questionsData : []);
+    const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0);
+    return [...list].sort(byOrder).map(q => ({ ...q, choices: [...(q.choices || [])].sort(byOrder) }));
+  })();
 
   // Auto-load quiz attempt answers when panel opens
   const { data: attemptData } = useApi(

@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Shield, ShieldAlert, AlertTriangle, AlertCircle, Clock, CheckCircle, XCircle, Send,
+  Shield, ShieldAlert, AlertTriangle, Clock, CheckCircle, XCircle, Send,
   Camera, CameraOff, Play, RotateCcw, FileText,
-  Award, Star, Target, BookOpen, Lock, Eye, LogOut, Calculator as CalculatorIcon, NotebookPen,
+  Star, Target, BookOpen, Lock, Eye, LogOut, Calculator as CalculatorIcon, NotebookPen,
 } from 'lucide-react';
 import elearningService from '../../services/elearning';
 import { analyzeFrame, preloadProctoringModels } from '../../utils/examProctoring';
@@ -726,121 +726,38 @@ function QuestionNav({ questions, answers, onSelect, onSubmit, submitting }) {
   );
 }
 
-// Mirrors apps/elearning/models.py's MENTION_THRESHOLDS/mention_for_percent —
-// keep the two in sync if the scale ever changes.
-const RESULT_MENTION_THRESHOLDS = [[90, 'Excellent'], [80, 'Très bien'], [70, 'Bien'], [60, 'Assez bien'], [50, 'Passable']];
-function mentionForPercent(pct) {
-  for (const [threshold, label] of RESULT_MENTION_THRESHOLDS) if (pct >= threshold) return label;
-  return 'Insuffisant';
-}
-
 /* ── RESULTS PAGE ────────────────────────────────────────────────────────── */
-function ResultsPage({ exam, questions, result, navigate }) {
+// Never shows the score/pass-fail breakdown right here, regardless of
+// whether the quiz part auto-graded — results (once a teacher has reviewed
+// the session and finished correcting any manually-graded part) are only
+// ever consulted later, from the student's own space.
+function ResultsPage({ exam, navigate }) {
   const { logout } = useAuth();
   const handleLogout = async () => {
     try { await logout(); } catch {}
     navigate('/login');
   };
 
-  // No quiz was submitted (PDF-only exam, or an exam whose only content was
-  // the PDF response) — there's no auto-computed score to show yet, just
-  // confirmation that the copy reached the teacher.
-  if (!result) {
-    return (
-      <div className="min-h-screen py-10 px-4" style={{ background: '#f8fafc' }}>
-        <div className="max-w-3xl mx-auto space-y-6">
-          <div className="rounded-3xl p-8 text-center text-white relative overflow-hidden"
-               style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>
-            <div className="relative z-10">
-              <FileText className="h-20 w-20 mx-auto mb-4 opacity-90" />
-              <h1 className="text-2xl font-black mb-2">{exam?.title}</h1>
-              <p className="text-sm opacity-80">Votre copie a été transmise à votre enseignant.</p>
-            </div>
-            <div className="absolute -right-12 -top-12 w-48 h-48 rounded-full bg-white opacity-5" />
-            <div className="absolute -left-8 -bottom-8 w-32 h-32 rounded-full bg-white opacity-5" />
-          </div>
-          <div className="rounded-2xl p-5 flex items-center gap-3" style={{ background: 'white', boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
-            <Clock className="h-5 w-5 flex-shrink-0" style={{ color: '#d97706' }} />
-            <p className="text-sm font-semibold" style={{ color: '#374151' }}>
-              En attente de correction — votre note apparaîtra ici une fois la copie corrigée.
-            </p>
-          </div>
-          <button onClick={() => navigate('/student/dashboard/elearning')}
-                  className="w-full py-3.5 rounded-2xl text-sm font-bold text-white"
-                  style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}>
-            Retour au tableau de bord E-Learning
-          </button>
-          <button onClick={handleLogout}
-                  className="w-full py-3 rounded-2xl text-sm font-bold border-2 flex items-center justify-center gap-2"
-                  style={{ borderColor: '#e2e8f0', color: '#64748b' }}>
-            <LogOut className="h-4 w-4" /> Se déconnecter
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const score    = result?.score ?? 0;
-  const maxScore = result?.max_score ?? questions.reduce((s, q) => s + (q.points || 1), 0);
-  const pct      = maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
-  const passed   = pct >= (exam?.pass_score_percent || 50);
-  const mention  = mentionForPercent(pct);
-
-  // Backend returns `question` (UUID) and `selected_choice_ids` (not question_id / choice_ids)
-  // Count correct: is_correct=true OR partial credit (points_earned > 0)
-  const answers = result?.answers || [];
-  const correctCount   = answers.filter(a => !!a.is_correct || Number(a.points_earned ?? 0) > 0).length;
-  const partialCount   = answers.filter(a => !a.is_correct && Number(a.points_earned ?? 0) > 0).length;
-  const incorrectCount = questions.length - correctCount;
-
   return (
     <div className="min-h-screen py-10 px-4" style={{ background: '#f8fafc' }}>
       <div className="max-w-3xl mx-auto space-y-6">
-
-        {/* Score card */}
         <div className="rounded-3xl p-8 text-center text-white relative overflow-hidden"
-             style={{ background: passed ? 'linear-gradient(135deg,#059669,#047857)' : 'linear-gradient(135deg,#ef4444,#dc2626)' }}>
+             style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>
           <div className="relative z-10">
-            {passed ? <Award className="h-20 w-20 mx-auto mb-4 opacity-90" /> : <Target className="h-20 w-20 mx-auto mb-4 opacity-90" />}
-            <h1 className="text-2xl font-black mb-4">{exam?.title}</h1>
-
-            {/* Mention — not the raw score/percent, per policy: students see
-                a qualitative grade (Excellent…Insuffisant), not exact points,
-                consistent with the Classement tab. */}
-            <div className="mb-3">
-              <span className="text-5xl font-black">{mention}</span>
-            </div>
-
-            <div className="flex items-center justify-center gap-3">
-              <div className="px-4 py-1.5 rounded-full text-sm font-bold"
-                   style={{ background: 'rgba(255,255,255,0.18)' }}>
-                {passed ? '✓ Réussi' : '✗ Non validé'}
-              </div>
-            </div>
-            <p className="text-xs opacity-60 mt-3">Seuil de réussite : {exam?.pass_score_percent || 50}%</p>
+            <CheckCircle className="h-20 w-20 mx-auto mb-4 opacity-90" />
+            <h1 className="text-2xl font-black mb-2">{exam?.title}</h1>
+            <p className="text-base font-bold mb-1">Merci d'avoir soumis votre examen !</p>
+            <p className="text-sm opacity-80">Votre copie a bien été transmise à votre enseignant.</p>
           </div>
           <div className="absolute -right-12 -top-12 w-48 h-48 rounded-full bg-white opacity-5" />
           <div className="absolute -left-8 -bottom-8 w-32 h-32 rounded-full bg-white opacity-5" />
         </div>
-
-        {/* Stats row */}
-        <div className={`grid gap-4 ${partialCount > 0 ? 'grid-cols-4' : 'grid-cols-3'}`}>
-          {[
-            { icon: BookOpen,    label: 'Questions',   value: questions.length,             color: '#6366f1', bg: '#eef2ff', show: true },
-            { icon: CheckCircle, label: 'Correctes',   value: correctCount - partialCount,  color: '#059669', bg: '#f0fdf4', show: true },
-            { icon: AlertCircle, label: 'Partielles',  value: partialCount,                 color: '#d97706', bg: '#fffbeb', show: partialCount > 0 },
-            { icon: XCircle,     label: 'Incorrectes', value: incorrectCount,               color: '#ef4444', bg: '#fef2f2', show: true },
-          ].filter(c => c.show).map(c => (
-            <div key={c.label} className="rounded-2xl p-5 text-center" style={{ background: 'white', boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
-              <div className="h-12 w-12 rounded-2xl flex items-center justify-center mx-auto mb-2" style={{ background: c.bg }}>
-                <c.icon className="h-6 w-6" style={{ color: c.color }} />
-              </div>
-              <p className="text-2xl font-black" style={{ color: '#1e293b' }}>{c.value}</p>
-              <p className="text-xs font-semibold mt-0.5" style={{ color: '#64748b' }}>{c.label}</p>
-            </div>
-          ))}
+        <div className="rounded-2xl p-5 flex items-center gap-3" style={{ background: 'white', boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
+          <Clock className="h-5 w-5 flex-shrink-0" style={{ color: '#d97706' }} />
+          <p className="text-sm font-semibold" style={{ color: '#374151' }}>
+            Vous pourrez consulter vos résultats plus tard, une fois la correction terminée, depuis votre espace.
+          </p>
         </div>
-
         <button onClick={() => navigate('/student/dashboard/elearning')}
                 className="w-full py-3.5 rounded-2xl text-sm font-bold text-white"
                 style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}>
@@ -1481,6 +1398,24 @@ export default function ExamPage() {
   useEffect(() => {
     if (phase !== 'exam' || fraudBlock || escalating || suspensionReview || breakState) return;
     const t = setInterval(() => {
+      // Bathroom-break scheduling — ticks alongside the exam countdown so a
+      // fraud suspension or an already-active break never counts toward the
+      // next one; only genuine exam-taking time does. Checked BEFORE the
+      // time's-up lock below and returns early when a break just became
+      // due: when the exam's duration is an exact multiple of
+      // BREAK_INTERVAL_MS (e.g. a 30-minute exam, or any exam at its last
+      // break), both conditions could fire on the very same tick — without
+      // this ordering, `setPhase('locked')` won and BreakModal (only
+      // rendered in the phase==='exam' tree) never mounted, so the pause
+      // silently never appeared. The countdown simply doesn't advance this
+      // tick — time spent on a break is never deducted anyway — and resumes
+      // (then locks if it's genuinely already at 0) once the break ends.
+      elapsedMsRef.current += 1000;
+      if (breaksUsedRef.current < MAX_BREAKS && elapsedMsRef.current >= (breaksUsedRef.current + 1) * BREAK_INTERVAL_MS) {
+        breaksUsedRef.current += 1;
+        setBreakState({ index: breaksUsedRef.current, until: Date.now() + BREAK_DURATION_MS });
+        return;
+      }
       setTimeLeft(l => {
         if (l <= 1) {
           clearInterval(t);
@@ -1489,14 +1424,6 @@ export default function ExamPage() {
         }
         return l - 1;
       });
-      // Bathroom-break scheduling — ticks alongside the exam countdown so a
-      // fraud suspension or an already-active break never counts toward the
-      // next one; only genuine exam-taking time does.
-      elapsedMsRef.current += 1000;
-      if (breaksUsedRef.current < MAX_BREAKS && elapsedMsRef.current >= (breaksUsedRef.current + 1) * BREAK_INTERVAL_MS) {
-        breaksUsedRef.current += 1;
-        setBreakState({ index: breaksUsedRef.current, until: Date.now() + BREAK_DURATION_MS });
-      }
     }, 1000);
     return () => clearInterval(t);
   }, [phase, fraudBlock, escalating, suspensionReview, breakState]);
@@ -1640,10 +1567,13 @@ export default function ExamPage() {
 
   useAntiCheat({
     examId,
-    // Stays fully active during an authorized break — the break only grants
-    // leave from the webcam/gaze checks (see WebcamMonitor's breakActive
-    // handling below), never from tab-switch/copy-paste/fullscreen rules.
-    enabled: phase === 'exam',
+    // Suppressed during an authorized break, same as the webcam/gaze checks
+    // (see WebcamMonitor's breakActive handling below) — a student stepping
+    // away, alt-tabbing, or exiting fullscreen during their 3-minute pause
+    // must never trigger an automatic fraud suspension; whether that's
+    // actually suspect is left to the teacher's own judgment (e.g. via the
+    // session's later review), not an automatic block.
+    enabled: phase === 'exam' && !breakState,
     onFlag,
     fullscreenEl,
     onFraudBlock: handleFraudBlock,
@@ -1684,7 +1614,15 @@ export default function ExamPage() {
       if (exam.quiz) {
         att  = await elearningService.startQuizAttempt(exam.quiz);
         const quiz = await elearningService.getQuizById(exam.quiz);
-        qs   = quiz?.questions || [];
+        // Sort explicitly by `order` rather than trusting the array as
+        // received from the API — questions/choices saved before the admin
+        // builder started sending an explicit order (or not yet backfilled
+        // server-side) all tie at order=0, which showed the student a
+        // different question/choice sequence than what the teacher actually
+        // composed (and than what the teacher sees while editing).
+        const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0);
+        qs = [...(quiz?.questions || [])].sort(byOrder)
+          .map(q => ({ ...q, choices: [...(q.choices || [])].sort(byOrder) }));
       }
 
       const sess = await elearningService.startExamSession(examId);
@@ -1731,6 +1669,15 @@ export default function ExamPage() {
       const startedAtMs = sess?.started_at ? new Date(sess.started_at).getTime() : Date.now();
       const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));
       setTimeLeft(Math.max(0, durationSeconds - elapsedSeconds));
+      // Reseed the break-scheduling refs from the same real elapsed time —
+      // they're plain useRefs (reset to 0 on every remount: reload, tab
+      // discard/restore, a fraud-suspension screen swap), so without this a
+      // break "due" at the 30-minute mark could silently slip past if the
+      // student reloaded partway through, or a break already taken before
+      // the reload could wrongly fire again a fresh 30 minutes later.
+      const elapsedMs = elapsedSeconds * 1000;
+      elapsedMsRef.current = elapsedMs;
+      breaksUsedRef.current = Math.min(MAX_BREAKS, Math.floor(elapsedMs / BREAK_INTERVAL_MS));
 
       setPhase('exam');
     } catch (e) {
