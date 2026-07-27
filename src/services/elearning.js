@@ -187,7 +187,12 @@ export const elearningService = {
   updateQuiz: (id, data) => api.patch(`/elearning/quizzes/${id}/`, data),
   deleteQuiz: (id) => api.delete(`/elearning/quizzes/${id}/`),
 
-  getQuestions: (quizId) => api.get(`/elearning/quiz-questions/?quiz=${quizId}`),
+  // page_size=50 — a quiz's own question list is always meant to load in
+  // full; without it, the backend's global DRF pagination (PAGE_SIZE=20,
+  // apps.core.pagination.FlexiblePagination) silently truncated any QCM
+  // past its 20th question everywhere this is called (exam builder, quiz
+  // manager, corrections, student results...).
+  getQuestions: (quizId) => api.get(`/elearning/quiz-questions/?quiz=${quizId}&page_size=50`),
   createQuestion: (data) => api.post('/elearning/quiz-questions/', data),
   createQuestionWithImage: (formData) => api.upload('/elearning/quiz-questions/', formData),
   updateQuestion: (id, data) => api.patch(`/elearning/quiz-questions/${id}/`, data),

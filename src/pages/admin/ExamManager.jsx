@@ -1025,8 +1025,9 @@ function QuestionBankView({ subjectsList = [], classesList = [], notify = () => 
 
   const load = useCallback(() => {
     setLoading(true);
-    // Get all quiz questions (bank)
-    const params = subject ? `?quiz__subject=${subject}` : '';
+    // Get all quiz questions (bank) — page_size=50 so the list isn't
+    // silently truncated by the backend's default DRF pagination (20).
+    const params = subject ? `?quiz__subject=${subject}&page_size=50` : '?page_size=50';
     fetch(`/api/elearning/quiz-questions/${params}`, {
       headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
     }).then(r => r.json()).then(d => {
