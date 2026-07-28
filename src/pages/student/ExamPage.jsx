@@ -179,6 +179,18 @@ function WebcamMonitor({ examId, sessionId, enabled }) {
     elearningService.logExamEvent(examId, 'WEBCAM_LOST', detail).catch(() => {});
   }, [examId]);
 
+  // A physically covered lens, a closed privacy shutter, or a driver still
+  // sharing the device with another app can all report a perfectly "active"
+  // MediaStream (green dot, non-zero readyState) while every frame it
+  // delivers is uniformly black — indistinguishable from a working camera
+  // by the active flag alone, and otherwise uploads useless blank evidence
+  // for the whole exam without anyone noticing until correction. Tracked
+  // here so both the student (visual warning) and the teacher (logged
+  // event) find out immediately instead of after the fact.
+  const blankStreakRef = useRef(0);
+  const blankReportedRef = useRef(false);
+  const [looksBlank, setLooksBlank] = useState(false);
+
   // The <video> element only mounts once `active` flips true (see render
   // below), which happens *after* the getUserMedia promise resolves — so at
   // the time that resolves, videoRef.current is still null and the stream
@@ -241,7 +253,34 @@ function WebcamMonitor({ examId, sessionId, enabled }) {
       const cv = canvasRef.current; const vd = videoRef.current;
       if (!cv || !vd || vd.readyState < 2) return;
       cv.width = 480; cv.height = 360;
-      cv.getContext('2d').drawImage(vd, 0, 0, 480, 360);
+      const ctx = cv.getContext('2d');
+      ctx.drawImage(vd, 0, 0, 480, 360);
+
+      // Cheap average-luma sample (every 10th pixel) over the frame just
+      // drawn — three consecutive near-black captures (~90s) is treated as
+      // a blank/obstructed camera rather than a single dark room/frame.
+      try {
+        const { data } = ctx.getImageData(0, 0, 480, 360);
+        let sum = 0, n = 0;
+        for (let i = 0; i < data.length; i += 40) { sum += (data[i] + data[i + 1] + data[i + 2]) / 3; n++; }
+        const avgLuma = n ? sum / n : 0;
+        if (avgLuma < 8) {
+          blankStreakRef.current += 1;
+        } else {
+          blankStreakRef.current = 0;
+          setLooksBlank(false);
+        }
+        if (blankStreakRef.current >= 3) {
+          setLooksBlank(true);
+          if (!blankReportedRef.current && examId) {
+            blankReportedRef.current = true;
+            elearningService.logExamEvent(examId, 'WEBCAM_BLANK',
+              'Image caméra uniformément noire depuis plusieurs captures — objectif peut-être obstrué ou caméra partagée avec une autre application.'
+            ).catch(() => {});
+          }
+        }
+      } catch { /* getImageData can throw on a tainted canvas — capture still proceeds below */ }
+
       cv.toBlob(async blob => {
         if (!blob || !sessionId) return;
         const fd = new FormData(); fd.append('snapshot', blob, `snap_${Date.now()}.jpg`);
@@ -250,17 +289,22 @@ function WebcamMonitor({ examId, sessionId, enabled }) {
     };
     const t = setInterval(capture, WEBCAM_INTERVAL); capture();
     return () => clearInterval(t);
-  }, [enabled, active, sessionId]);
+  }, [enabled, active, sessionId, examId]);
 
   if (!enabled) return null;
   return (
-    <div className="relative flex-shrink-0">
+    <div className="relative flex-shrink-0" title={looksBlank ? 'Votre caméra ne semble transmettre aucune image — vérifiez qu\'aucun cache/volet ne bloque l\'objectif et qu\'aucune autre application ne l\'utilise.' : undefined}>
       <div className="w-24 h-16 rounded-lg overflow-hidden" style={{ background: '#111827' }}>
         {active ? <video ref={attachVideo} autoPlay muted playsInline className="w-full h-full object-cover" />
                 : <div className="w-full h-full flex items-center justify-center"><CameraOff size={16} className="text-gray-600" /></div>}
+        {active && looksBlank && (
+          <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.35)' }}>
+            <AlertTriangle size={16} className="text-amber-400" />
+          </div>
+        )}
       </div>
       <canvas ref={canvasRef} className="hidden" />
-      <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${active ? 'bg-green-400' : 'bg-gray-400'}`} />
+      <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${looksBlank ? 'bg-amber-400' : active ? 'bg-green-400' : 'bg-gray-400'}`} />
     </div>
   );
 }
