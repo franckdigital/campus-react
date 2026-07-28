@@ -6,7 +6,7 @@ import {
   CheckCircle, Clock, ChevronDown, ChevronUp, FileText, Award,
   BarChart2, X, Search, Users, Trophy, AlertTriangle, Plus,
   Hash, ToggleLeft, Type, ListChecks, GitCompare, ArrowUpDown,
-  Camera, ShieldAlert, Calendar,
+  Camera, ShieldAlert, Calendar, XCircle,
 } from 'lucide-react';
 import { elearningService } from '../../services/elearning';
 import { useApi } from '../../hooks/useApi';
@@ -756,9 +756,105 @@ function QuizCorrectionList({ notify }) {
 
 // ─── Exam corrections ─────────────────────────────────────────────────────────
 
+// Per-question correct/incorrect breakdown for a candidate's submitted QCM —
+// the "Réponses" tab. Purely a read-only review (grading itself still
+// happens in the "Notation" tab) so a teacher can see at a glance what the
+// student got right/wrong before assigning points, without re-deriving it
+// from the raw choice list themselves.
+function ExamAnswersReview({ questions, answerMap }) {
+  if (questions.length === 0) {
+    return <p className="text-xs text-center py-6" style={{ color: '#94a3b8' }}>Aucune question à afficher.</p>;
+  }
+  const correctCount = questions.filter(q => answerMap[q.id]?.is_correct === true).length;
+  const incorrectCount = questions.filter(q => answerMap[q.id]?.is_correct === false).length;
+  const pendingCount = questions.length - correctCount - incorrectCount;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <div className="flex-1 rounded-xl p-3 text-center" style={{ background: '#f0fdf4' }}>
+          <p className="text-lg font-black" style={{ color: '#059669' }}>{correctCount}</p>
+          <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#059669' }}>Bonnes réponses</p>
+        </div>
+        <div className="flex-1 rounded-xl p-3 text-center" style={{ background: '#fef2f2' }}>
+          <p className="text-lg font-black" style={{ color: '#dc2626' }}>{incorrectCount}</p>
+          <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#dc2626' }}>Mauvaises réponses</p>
+        </div>
+        {pendingCount > 0 && (
+          <div className="flex-1 rounded-xl p-3 text-center" style={{ background: '#fffbeb' }}>
+            <p className="text-lg font-black" style={{ color: '#d97706' }}>{pendingCount}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#d97706' }}>En attente</p>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        {questions.map((q, i) => {
+          const ans = answerMap[q.id];
+          const isCorrect = ans?.is_correct;
+          const selectedIds = new Set((ans?.selected_choice_ids || []).map(String));
+          const isChoiceType = ['QCU', 'QCM', 'TRUEFALSE'].includes(q.question_type);
+          return (
+            <div key={q.id} className="rounded-xl overflow-hidden"
+                 style={{ border: `1.5px solid ${isCorrect === true ? '#bbf7d0' : isCorrect === false ? '#fecaca' : '#e2e8f0'}` }}>
+              <div className="flex items-start gap-2 px-3 py-2.5"
+                   style={{ background: isCorrect === true ? '#f0fdf4' : isCorrect === false ? '#fef2f2' : '#fafbff' }}>
+                <span className="text-[10px] font-black flex-shrink-0 mt-0.5" style={{ color: '#94a3b8' }}>Q{i + 1}</span>
+                <p className="text-xs font-semibold flex-1" style={{ color: '#1e293b' }}>{stripHtml(q.text)}</p>
+                {isCorrect === true && <CheckCircle className="h-4 w-4 flex-shrink-0" style={{ color: '#059669' }} />}
+                {isCorrect === false && <XCircle className="h-4 w-4 flex-shrink-0" style={{ color: '#dc2626' }} />}
+                {isCorrect == null && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: '#fef3c7', color: '#d97706' }}>
+                    En attente
+                  </span>
+                )}
+              </div>
+              <div className="px-3 py-2.5 bg-white">
+                {isChoiceType ? (
+                  <div className="space-y-1">
+                    {(q.choices || []).map(c => {
+                      const picked = selectedIds.has(String(c.id));
+                      return (
+                        <div key={c.id} className="flex items-center gap-2 text-[11px] px-2.5 py-1.5 rounded-lg"
+                             style={{
+                               background: c.is_correct ? '#dcfce7' : picked ? '#fee2e2' : '#f8fafc',
+                               color: c.is_correct ? '#065f46' : picked ? '#991b1b' : '#94a3b8',
+                               fontWeight: (c.is_correct || picked) ? 700 : 500,
+                             }}>
+                          {c.is_correct
+                            ? <CheckCircle className="h-3 w-3 flex-shrink-0" />
+                            : picked ? <XCircle className="h-3 w-3 flex-shrink-0" /> : <span className="h-3 w-3 flex-shrink-0" />}
+                          <span className="flex-1">{c.text}</span>
+                          {picked && <span className="text-[9px] italic flex-shrink-0">Choisi par l'étudiant</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-[11px] italic" style={{ color: '#64748b' }}>
+                    Réponse de l'étudiant : {ans?.text_response || ans?.numeric_response || <span style={{ color: '#cbd5e1' }}>aucune réponse</span>}
+                  </p>
+                )}
+                {q.explanation?.trim() && (
+                  <p className="text-[10px] mt-2 pt-2" style={{ color: '#94a3b8', borderTop: '1px solid #f1f5f9' }}>
+                    💡 {stripHtml(q.explanation)}
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ExamSessionRow({ session: s, exam, notify, onGraded }) {
   const maxScore = exam?.max_score || 20;
   const [open, setOpen] = useState(false);
+  // 'grading' (notation + fichier corrigé) | 'answers' (bonnes/mauvaises
+  // réponses, read-only) — only relevant once the panel is open.
+  const [view, setView] = useState('grading');
   const [form, setForm] = useState({ score: s.score ?? '', feedback: s.feedback ?? '' });
   const [qScores, setQScores] = useState({});
   const [saving, setSaving] = useState(false);
@@ -1083,6 +1179,27 @@ function ExamSessionRow({ session: s, exam, notify, onGraded }) {
 
       {open && (
         <div className="mx-5 mb-4 space-y-3">
+          {/* Réponses (bonnes/mauvaises) vs. Notation — only worth a tab
+              switcher when there's actually a QCM to review; a PDF-only
+              exam has nothing for the "Réponses" tab to show. */}
+          {questions.length > 0 && (
+            <div className="flex gap-1 p-1 rounded-xl" style={{ background: '#f8fafc' }}>
+              {[{ id: 'grading', label: 'Notation' }, { id: 'answers', label: 'Réponses' }].map(m => (
+                <button key={m.id} onClick={() => setView(m.id)}
+                        className="flex-1 py-2 rounded-lg text-xs font-bold transition-all"
+                        style={{ background: view === m.id ? 'white' : 'transparent', color: view === m.id ? A : '#64748b', boxShadow: view === m.id ? '0 2px 8px rgba(0,0,0,0.08)' : 'none' }}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {view === 'answers' && questions.length > 0 && (
+            <ExamAnswersReview questions={questions} answerMap={answerMap} />
+          )}
+
+          {(view === 'grading' || questions.length === 0) && (
+          <>
           {/* Per-question panel if exam has a quiz */}
           {questions.length > 0 && (
             <div className="rounded-2xl overflow-hidden" style={{ border: `1.5px solid ${A}20` }}>
@@ -1235,6 +1352,8 @@ function ExamSessionRow({ session: s, exam, notify, onGraded }) {
               </button>
             </div>
           </div>
+          </>
+          )}
         </div>
       )}
     </div>
