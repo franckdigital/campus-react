@@ -6,7 +6,7 @@ import {
   CheckCircle, Clock, ChevronDown, ChevronUp, FileText, Award,
   BarChart2, X, Search, Users, Trophy, AlertTriangle, Plus,
   Hash, ToggleLeft, Type, ListChecks, GitCompare, ArrowUpDown,
-  Camera, ShieldAlert, Calendar, XCircle,
+  Camera, ShieldAlert, Calendar, XCircle, MessageCircle,
 } from 'lucide-react';
 import { elearningService } from '../../services/elearning';
 import { useApi } from '../../hooks/useApi';
@@ -863,7 +863,14 @@ function ExamSessionRow({ session: s, exam, notify, onGraded }) {
   const fileRef = useRef();
   const [file, setFile] = useState(null);
   const [showSnapshots, setShowSnapshots] = useState(false);
+  const [showConduct, setShowConduct] = useState(false);
   const [lightbox, setLightbox] = useState(null);
+
+  // Student-authored explanations of their own behavior during the exam
+  // (e.g. "I had to stand up because...") — logged via the same generic
+  // log-event endpoint the anti-cheat itself uses (event_type=CONDUCT_NOTE),
+  // purely for the teacher's own judgment, never auto-flagged or acted on.
+  const conductNotes = (s.events_log || []).filter(e => e.type === 'CONDUCT_NOTE');
 
   // Webcam proctoring: lazy-load snapshots + AI analysis only when the admin
   // actually opens the gallery, so sessions nobody reviews cost nothing extra.
@@ -1069,6 +1076,11 @@ function ExamSessionRow({ session: s, exam, notify, onGraded }) {
                   style={{ background: showSnapshots ? '#dbeafe' : '#eff6ff', color: '#2563eb' }}>
             <Camera className="h-3 w-3" /> Captures
           </button>
+          <button onClick={() => setShowConduct(v => !v)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold"
+                  style={{ background: showConduct ? '#fef3c7' : '#fffbeb', color: '#b45309' }}>
+            <MessageCircle className="h-3 w-3" /> Conduite{conductNotes.length > 0 ? ` (${conductNotes.length})` : ''}
+          </button>
           <button onClick={() => setOpen(!open)}
                   className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold"
                   style={{ background: open ? '#fef3c7' : '#fff7ed', color: A }}>
@@ -1137,6 +1149,41 @@ function ExamSessionRow({ session: s, exam, notify, onGraded }) {
                     </button>
                   );
                 })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showConduct && (
+        <div className="mx-5 mb-4 rounded-2xl overflow-hidden" style={{ border: '1.5px solid #fde68a' }}>
+          <div className="flex items-center justify-between px-4 py-2.5" style={{ background: '#fffbeb' }}>
+            <span className="text-[10px] font-extrabold uppercase tracking-widest" style={{ color: '#b45309' }}>
+              Notes de conduite de l'étudiant
+            </span>
+            {conductNotes.length > 0 && (
+              <span className="text-xs font-black" style={{ color: '#b45309' }}>
+                {conductNotes.length} note{conductNotes.length > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+          <div className="p-4 bg-white">
+            {conductNotes.length === 0 ? (
+              <p className="text-xs text-center py-6" style={{ color: '#94a3b8' }}>
+                L'étudiant n'a laissé aucune note explicative pendant cet examen.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {conductNotes.map((n, i) => (
+                  <div key={i} className="rounded-xl p-3" style={{ background: '#fffbeb', border: '1.5px solid #fde68a' }}>
+                    <p className="text-xs leading-relaxed" style={{ color: '#78350f' }}>
+                      {typeof n.details === 'string' ? n.details : JSON.stringify(n.details)}
+                    </p>
+                    <p className="text-[10px] mt-1.5 font-semibold" style={{ color: '#b45309' }}>
+                      {n.at ? new Date(n.at).toLocaleString('fr-FR') : ''}
+                    </p>
+                  </div>
+                ))}
               </div>
             )}
           </div>
