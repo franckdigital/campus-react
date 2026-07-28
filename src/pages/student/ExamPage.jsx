@@ -190,6 +190,14 @@ function WebcamMonitor({ examId, sessionId, enabled }) {
   const blankStreakRef = useRef(0);
   const blankReportedRef = useRef(false);
   const [looksBlank, setLooksBlank] = useState(false);
+  // A distinct counter for "no frame at all" (readyState never reaches
+  // HAVE_CURRENT_DATA) — some locked-down/managed browsers (school lab
+  // machines in particular) block autoplay outright even for a muted
+  // stream, so the getUserMedia promise resolves (active/green dot) but
+  // play() never actually starts and no frame is ever available to sample.
+  // Without this, that case bailed out of capture() silently forever, with
+  // the green dot misleadingly implying everything was fine.
+  const notReadyStreakRef = useRef(0);
 
   // The <video> element only mounts once `active` flips true (see render
   // below), which happens *after* the getUserMedia promise resolves — so at
@@ -251,7 +259,20 @@ function WebcamMonitor({ examId, sessionId, enabled }) {
     if (!enabled || !active) return;
     const capture = async () => {
       const cv = canvasRef.current; const vd = videoRef.current;
-      if (!cv || !vd || vd.readyState < 2) return;
+      if (!cv || !vd || vd.readyState < 2) {
+        notReadyStreakRef.current += 1;
+        if (notReadyStreakRef.current >= 3) {
+          setLooksBlank(true);
+          if (!blankReportedRef.current && examId) {
+            blankReportedRef.current = true;
+            elearningService.logExamEvent(examId, 'WEBCAM_BLANK',
+              'Flux caméra actif mais aucune image exploitable (lecture vidéo bloquée) — vérifiez les autorisations/paramètres du navigateur.'
+            ).catch(() => {});
+          }
+        }
+        return;
+      }
+      notReadyStreakRef.current = 0;
       cv.width = 480; cv.height = 360;
       const ctx = cv.getContext('2d');
       ctx.drawImage(vd, 0, 0, 480, 360);
