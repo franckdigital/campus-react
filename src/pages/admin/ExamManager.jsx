@@ -222,6 +222,13 @@ function QuestionEditor({ question, onChange, onDelete, idx }) {
               <select value={question.question_type}
                       onChange={e => {
                         const next = { ...question, question_type: e.target.value };
+                        // question_prompt only exists for TEXT questions (see
+                        // the editor below) — leaving it set after switching
+                        // away used to save the old value onto the QCM/QCU/
+                        // Vrai-Faux row, where the exam page rendered it right
+                        // under the énoncé, looking like the question was
+                        // shown twice to the candidate.
+                        if (e.target.value !== 'TEXT') next.question_prompt = '';
                         if (e.target.value === 'TRUEFALSE') {
                           next.choices = [
                             { id: 'vrai', text: 'Vrai', is_correct: true },
@@ -584,7 +591,14 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
           await Promise.all(questions.map(async (q, qIdx) => {
             const isNew = String(q.id).startsWith('new-');
             const qPayload = {
-              quiz: quizId, question_type: q.question_type, text: q.text, question_prompt: q.question_prompt || '', order: qIdx,
+              quiz: quizId, question_type: q.question_type, text: q.text,
+              // Only ever persisted for TEXT questions — see the type-switch
+              // handler above; normalized here too so any question edited
+              // without touching its type (e.g. re-saving an already-stale
+              // row) still gets cleaned up on the next save instead of
+              // requiring a separate backfill.
+              question_prompt: q.question_type === 'TEXT' ? (q.question_prompt || '') : '',
+              order: qIdx,
               points: q.points || 1, time_limit: q.time_limit || 0, text_answer: q.text_answer || '',
             };
             const savedQ = isNew
@@ -617,7 +631,14 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
           quizId = quiz.id;
           await Promise.all(questions.map(async (q, qIdx) => {
             const savedQ = await elearningService.createQuestion({
-              quiz: quizId, question_type: q.question_type, text: q.text, question_prompt: q.question_prompt || '', order: qIdx,
+              quiz: quizId, question_type: q.question_type, text: q.text,
+              // Only ever persisted for TEXT questions — see the type-switch
+              // handler above; normalized here too so any question edited
+              // without touching its type (e.g. re-saving an already-stale
+              // row) still gets cleaned up on the next save instead of
+              // requiring a separate backfill.
+              question_prompt: q.question_type === 'TEXT' ? (q.question_prompt || '') : '',
+              order: qIdx,
               points: q.points || 1, time_limit: q.time_limit || 0, text_answer: q.text_answer || '',
             });
             if (q.question_type !== 'TEXT') {
@@ -647,7 +668,14 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
             quizId = quiz.id;
             await Promise.all(questions.map(async (q, qIdx) => {
               const savedQ = await elearningService.createQuestion({
-                quiz: quizId, question_type: q.question_type, text: q.text, question_prompt: q.question_prompt || '', order: qIdx,
+                quiz: quizId, question_type: q.question_type, text: q.text,
+              // Only ever persisted for TEXT questions — see the type-switch
+              // handler above; normalized here too so any question edited
+              // without touching its type (e.g. re-saving an already-stale
+              // row) still gets cleaned up on the next save instead of
+              // requiring a separate backfill.
+              question_prompt: q.question_type === 'TEXT' ? (q.question_prompt || '') : '',
+              order: qIdx,
                 points: q.points || 1, time_limit: q.time_limit || 0, text_answer: q.text_answer || '',
               });
               if (q.question_type !== 'TEXT') {

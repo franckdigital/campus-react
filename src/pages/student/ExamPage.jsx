@@ -629,8 +629,13 @@ function QuestionCard({ question, idx, total, answer, onAnswer, expired, onExpir
              dangerouslySetInnerHTML={{ __html: sanitizeRichText(question.text) }} />
 
         {/* Question précise — distincte de l'énoncé/mise en situation
-            ci-dessus (voir ExamManager.jsx) */}
-        {question.question_prompt?.trim() && (
+            ci-dessus (voir ExamManager.jsx). Uniquement pour le type TEXT —
+            l'éditeur admin ne montre/édite ce champ que pour ce type, mais
+            une question basculée depuis TEXT vers QCM/QCU/Vrai-Faux pouvait
+            garder une ancienne valeur de question_prompt en base ; sans ce
+            garde-fou, elle s'affichait ici en plus de l'énoncé, comme une
+            question dupliquée aux yeux du candidat. */}
+        {question.question_type === 'TEXT' && question.question_prompt?.trim() && (
           <div className="pt-2 mt-1" style={{ borderTop: '1.5px dashed #e2e8f0' }}>
             <p className="text-[11px] font-black uppercase tracking-wide mb-1" style={{ color: '#7c3aed' }}>Question</p>
             <div className="text-sm font-semibold leading-relaxed" style={{ color: '#1e293b' }}
