@@ -13,14 +13,30 @@ import RichTextEditor from '../../components/exam/RichTextEditor';
 import CalculatorWidget from '../../components/exam/CalculatorWidget';
 import DraftPad from '../../components/exam/DraftPad';
 import ConductNoteModal from '../../components/exam/ConductNoteModal';
+import { analyzeFrame, preloadProctoringModels } from '../../utils/examProctoring';
 import { sanitizeRichText, stripHtml } from '../../utils/richText';
 
 /* ── constants ───────────────────────────────────────────────────────────── */
 const LOG_COOLDOWN      = 3000;
 const WEBCAM_INTERVAL   = 30000;
-// Flat suspension duration for the only two anti-cheat triggers left: a
-// tab/window switch or a blocked copy/paste. Never escalates, never
-// auto-submits the exam — the student just waits it out and resumes.
+const DETECT_INTERVAL   = 3000;   // local TF.js phone/face detection — cheap, so tighter than the snapshot upload
+// Cumulative phone-detection ticks across the whole exam before suspending —
+// a single frame where coco-ssd confidently names a phone is already a
+// meaningful signal, but requiring a few (not necessarily consecutive)
+// occurrences absorbs the rare one-off misclassification.
+const PHONE_HIT_THRESHOLD = 3;
+// A brief, normal absence — reaching for something on the desk, a stretch —
+// must never suspend on its own. Only a face that stays out of frame this
+// long (continuously) counts as "left the screen": a red warning banner
+// fires first at NO_FACE_WARN_MS so the candidate can come back on their
+// own, and only an absence that keeps going past NO_FACE_SUSPEND_MS actually
+// suspends.
+const NO_FACE_WARN_MS    = 30_000;
+const NO_FACE_SUSPEND_MS = 60_000;
+// Flat suspension duration for every anti-cheat trigger below: a tab/window
+// switch, a blocked copy/paste, a detected phone, or a prolonged absence
+// from the webcam. Never escalates, never auto-submits the exam — the
+// student just waits it out and resumes exactly where they were.
 const FRAUD_SUSPEND_MIN = 5;
 
 // Mandatory-but-skippable bathroom breaks: every BREAK_INTERVAL_MS of actual
@@ -156,17 +172,29 @@ function useAntiCheat({ examId, enabled, onFlag, fullscreenEl, onFraudBlock }) {
 }
 
 /* ── Webcam ──────────────────────────────────────────────────────────────── */
-// Archival only — periodically captures snapshots for the teacher to review
-// during correction, entirely at their own judgment. No local phone/face/
-// gaze detection runs anymore, and nothing here auto-flags or suspends the
-// student: a visible phone, an absent face, someone else in frame, or the
-// candidate stepping away from the screen are never, on their own, treated
-// as a fraud signal by the system.
-function WebcamMonitor({ examId, sessionId, enabled }) {
+// Periodically captures snapshots for the teacher to review during
+// correction, plus a narrow, local (in-browser) fraud check: a confidently
+// phone-shaped object, or a face missing from frame for over a minute
+// straight. Deliberately narrow — see examProctoring.js's header comment —
+// so an innocent gesture (a hand on the cheek, scratching an itch,
+// stretching, briefly reaching off-screen) never gets misread as either one.
+function WebcamMonitor({ examId, sessionId, enabled, onFlag, onFraudBlock, paused, breakActive }) {
   const videoRef  = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const [active, setActive] = useState(false);
+  // Kept in refs (not effect deps) so the detection interval below doesn't
+  // get torn down and restarted every time the parent re-renders with a new
+  // callback reference or flips `paused`/`breakActive` — only
+  // `enabled`/`active` should do that.
+  const onFraudBlockRef = useRef(onFraudBlock);
+  const onFlagRef = useRef(onFlag);
+  const pausedRef = useRef(paused);
+  const breakActiveRef = useRef(breakActive);
+  useEffect(() => { onFraudBlockRef.current = onFraudBlock; }, [onFraudBlock]);
+  useEffect(() => { onFlagRef.current = onFlag; }, [onFlag]);
+  useEffect(() => { pausedRef.current = paused; }, [paused]);
+  useEffect(() => { breakActiveRef.current = breakActive; }, [breakActive]);
   // The intro screen already confirmed the webcam works before the student
   // was allowed to start, so by the time this mounts any failure to (re-)
   // acquire the stream — including the first attempt here — is a real loss
@@ -311,6 +339,73 @@ function WebcamMonitor({ examId, sessionId, enabled }) {
     const t = setInterval(capture, WEBCAM_INTERVAL); capture();
     return () => clearInterval(t);
   }, [enabled, active, sessionId, examId]);
+
+  // Local, in-browser phone/face detection (TensorFlow.js coco-ssd +
+  // blazeface) — see examProctoring.js. Runs entirely on-device, tighter
+  // than the snapshot interval since it's free to run more often.
+  //  - Phone: cumulative occurrences (not necessarily consecutive) across
+  //    the whole exam — reaching PHONE_HIT_THRESHOLD suspends.
+  //  - Absence: a *continuous* no-face streak — reaching NO_FACE_WARN_MS
+  //    shows the red warning banner (onFlag), reaching NO_FACE_SUSPEND_MS
+  //    suspends. Any face sighting resets the streak, so a stretch or a
+  //    glance away and back never accumulates toward anything.
+  useEffect(() => {
+    if (!enabled || !active) return;
+    let cancelled = false;
+    let busy = false;
+    let phoneHits = 0;
+    let noFaceSince = null;
+    let noFaceWarned = false;
+    const detect = async () => {
+      if (busy) return;
+      busy = true;
+      const result = await analyzeFrame(videoRef.current);
+      busy = false;
+      if (cancelled || !result) return;
+      const { phoneDetected, faceCount } = result;
+
+      if (breakActiveRef.current) {
+        // Authorized break — stepping away is expected and must never count
+        // toward anything once resumed.
+        noFaceSince = null; noFaceWarned = false;
+        return;
+      }
+      if (pausedRef.current) {
+        // Already suspended (any reason) — detection stays idle rather than
+        // stacking a second, unrelated suspension on top of the first.
+        noFaceSince = null; noFaceWarned = false;
+        return;
+      }
+
+      if (phoneDetected) {
+        phoneHits++;
+        if (phoneHits >= PHONE_HIT_THRESHOLD) {
+          phoneHits = 0;
+          onFraudBlockRef.current?.('Un téléphone (ou objet ressemblant) a été détecté à plusieurs reprises dans le champ de la webcam.');
+          return;
+        }
+      }
+
+      const now = Date.now();
+      if (faceCount === 0) {
+        if (!noFaceSince) noFaceSince = now;
+        const awayMs = now - noFaceSince;
+        if (awayMs >= NO_FACE_SUSPEND_MS) {
+          noFaceSince = null; noFaceWarned = false;
+          onFraudBlockRef.current?.('Absence prolongée du champ de la webcam pendant plus d\'une minute.');
+        } else if (awayMs >= NO_FACE_WARN_MS && !noFaceWarned) {
+          noFaceWarned = true;
+          if (examId) elearningService.logExamEvent(examId, 'AI_FLAG', 'Absence du champ de la webcam depuis 30s — avertissement avant suspension.').catch(() => {});
+          onFlagRef.current?.('NO_FACE_WARNING');
+        }
+      } else {
+        noFaceSince = null;
+        noFaceWarned = false;
+      }
+    };
+    const t = setInterval(detect, DETECT_INTERVAL); detect();
+    return () => { cancelled = true; clearInterval(t); };
+  }, [enabled, active, examId]);
 
   if (!enabled) return null;
   return (
@@ -938,7 +1033,7 @@ function IntroPage({ exam, onStart, error, attemptsExhausted, starting }) {
     exam?.fullscreen_required && 'Mode plein écran obligatoire',
     exam?.block_copy_paste    && 'Copier-coller désactivé',
     exam?.max_tab_switches != null && `Changements d'onglet limités à ${exam.max_tab_switches}`,
-    exam?.webcam_required     && 'Webcam requise',
+    exam?.webcam_required     && 'Webcam requise — détection de téléphone et d\'absence prolongée du champ de la caméra',
     exam?.ai_proctoring       && 'Surveillance IA activée',
   ].filter(Boolean);
 
@@ -967,6 +1062,11 @@ function IntroPage({ exam, onStart, error, attemptsExhausted, starting }) {
         // Only testing access here — WebcamMonitor opens its own stream once
         // the exam actually starts, so release this one immediately.
         stream.getTracks().forEach(t => t.stop());
+        // Start downloading/warming up the TF.js models now, in parallel
+        // with the student reading the exam conditions, so they're already
+        // cached by the time WebcamMonitor needs them instead of stalling
+        // the first detection tick of the exam.
+        preloadProctoringModels();
         if (!cancelled) setWebcamStatus('ready');
       })
       .catch(err => {
@@ -1295,6 +1395,7 @@ export default function ExamPage() {
       COPY_ATTEMPT:      'Tentative de copie bloquée',
       KEYBOARD_SHORTCUT: 'Raccourci bloqué',
       RIGHT_CLICK:       'Clic droit bloqué',
+      NO_FACE_WARNING:   'Vous avez quitté le champ de la webcam — revenez immédiatement ou l\'examen sera suspendu.',
     };
     setFlags(f => [...f.slice(-3), { type, message: msgs[type] || type }]);
   }, []);
@@ -1664,7 +1765,9 @@ export default function ExamPage() {
 
           {/* Webcam */}
           <div className="order-3 sm:order-4">
-            <WebcamMonitor examId={examId} sessionId={session?.id} enabled={!!exam?.webcam_required} />
+            <WebcamMonitor examId={examId} sessionId={session?.id} enabled={!!exam?.webcam_required}
+                           onFlag={onFlag} onFraudBlock={handleFraudBlock}
+                           paused={!!fraudBlock} breakActive={!!breakState} />
           </div>
 
           {/* Submit */}
