@@ -4,6 +4,7 @@ import {
   Shield, ShieldAlert, AlertTriangle, Clock, CheckCircle, XCircle, Send,
   Camera, CameraOff, Play, RotateCcw, FileText,
   Star, Target, BookOpen, Lock, Eye, LogOut, Calculator as CalculatorIcon, NotebookPen,
+  MessageCircle,
 } from 'lucide-react';
 import elearningService from '../../services/elearning';
 import { useAuth } from '../../context/AuthContext';
@@ -11,6 +12,7 @@ import PdfModal from '../../components/exam/PdfModal';
 import RichTextEditor from '../../components/exam/RichTextEditor';
 import CalculatorWidget from '../../components/exam/CalculatorWidget';
 import DraftPad from '../../components/exam/DraftPad';
+import ConductNoteModal from '../../components/exam/ConductNoteModal';
 import { sanitizeRichText, stripHtml } from '../../utils/richText';
 
 /* ── constants ───────────────────────────────────────────────────────────── */
@@ -276,6 +278,7 @@ function PdfAnswerSection({ examId, sessionId, content, setContent, error }) {
   const [sendError, setSendError] = useState('');
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [draftOpen, setDraftOpen] = useState(false);
+  const [conductOpen, setConductOpen] = useState(false);
   const sentTimer = useRef(null);
   const editorRef = useRef(null);
 
@@ -322,6 +325,11 @@ function PdfAnswerSection({ examId, sessionId, content, setContent, error }) {
               style={{ background: '#ede9fe', color: '#6d28d9' }}>
               <CalculatorIcon className="h-3.5 w-3.5" /> Calculatrice
             </button>
+            <button onClick={() => setConductOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold"
+              style={{ background: '#fef3c7', color: '#b45309' }}>
+              <MessageCircle className="h-3.5 w-3.5" /> Conduite
+            </button>
           </div>
         </div>
 
@@ -362,6 +370,10 @@ function PdfAnswerSection({ examId, sessionId, content, setContent, error }) {
 
       {draftOpen && (
         <DraftPad examId={examId} onClose={() => setDraftOpen(false)} />
+      )}
+
+      {conductOpen && (
+        <ConductNoteModal examId={examId} onClose={() => setConductOpen(false)} />
       )}
     </div>
   );
@@ -1082,6 +1094,7 @@ export default function ExamPage() {
   const [activeTextQuestionId, setActiveTextQuestionId] = useState(null);
   const [quizCalculatorOpen, setQuizCalculatorOpen] = useState(false);
   const [quizDraftOpen, setQuizDraftOpen] = useState(false);
+  const [quizConductOpen, setQuizConductOpen] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
   const [flags, setFlags]       = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -1497,6 +1510,9 @@ export default function ExamPage() {
       {quizDraftOpen && (
         <DraftPad examId={examId} onClose={() => setQuizDraftOpen(false)} />
       )}
+      {quizConductOpen && (
+        <ConductNoteModal examId={examId} onClose={() => setQuizConductOpen(false)} />
+      )}
       <style>{`@keyframes fadeInUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}`}</style>
 
       {/* ── TOP BAR ── */}
@@ -1613,6 +1629,11 @@ export default function ExamPage() {
                     className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold shadow-sm"
                     style={{ background: '#ede9fe', color: '#6d28d9' }}>
                     <CalculatorIcon className="h-3.5 w-3.5" /> Calculatrice
+                  </button>
+                  <button onClick={() => setQuizConductOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold shadow-sm"
+                    style={{ background: '#fef3c7', color: '#b45309' }}>
+                    <MessageCircle className="h-3.5 w-3.5" /> Conduite
                   </button>
                 </div>
                 {questions.map((question, i) => (
