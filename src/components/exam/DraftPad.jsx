@@ -89,7 +89,7 @@ export default function DraftPad({ examId, onClose }) {
   };
 
   return createPortal(
-    <div className="fixed bottom-6 left-6 z-[9999] w-[26rem] max-w-[calc(100vw-3rem)] rounded-2xl overflow-hidden flex flex-col"
+    <div className="fixed bottom-6 right-6 z-[9999] w-[26rem] max-w-[calc(100vw-3rem)] rounded-2xl overflow-hidden flex flex-col"
          style={{ background: '#fff', boxShadow: '0 12px 40px rgba(0,0,0,0.25)', border: '1.5px solid #e2e8f0', maxHeight: '75vh' }}>
       <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg,#0891b2,#0e7490)' }}>
         <div className="flex items-center gap-2">
