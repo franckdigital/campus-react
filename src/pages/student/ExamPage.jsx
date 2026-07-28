@@ -305,7 +305,7 @@ function PdfAnswerSection({ examId, sessionId, content, setContent, error }) {
 
   return (
     <div className="rounded-2xl overflow-hidden h-full flex flex-col" style={{ background: 'white', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
-      <div className="p-5 space-y-4">
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h2 className="text-sm font-black" style={{ color: '#1e293b' }}>Votre réponse au sujet PDF</h2>
@@ -348,9 +348,11 @@ function PdfAnswerSection({ examId, sessionId, content, setContent, error }) {
         )}
       </div>
 
-      {/* Sticky so it stays reachable while scrolling through a long answer
-          instead of needing to scroll all the way down to submit. */}
-      <div className="sticky bottom-0 mt-auto px-5 py-4" style={{ background: 'white', borderTop: '1px solid #f1f5f9' }}>
+      {/* A plain flex-shrink-0 footer below the scrollable answer area above
+          — always visible, never overlapping the text, since the content
+          area scrolls on its own instead of the whole card growing past the
+          screen and needing a sticky button pinned over it. */}
+      <div className="flex-shrink-0 px-5 py-4" style={{ background: 'white', borderTop: '1px solid #f1f5f9' }}>
         <button onClick={handleSend} disabled={sending}
                 className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-black text-white disabled:opacity-50 transition-all"
                 style={{ background: sent ? 'linear-gradient(135deg,#059669,#047857)' : 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>
@@ -1191,15 +1193,16 @@ export default function ExamPage() {
   // Mirror current question + answers into localStorage as the candidate
   // progresses, so a remount (fraud-block-triggered reload, tab discarded
   // while minimized, accidental refresh) can restore exactly where they
-  // were — see the restore logic in startExam() above.
+  // were — see the restore logic in startExam() above. fraudBlock rides
+  // along too, so refreshing mid-suspension can't be used to skip the wait.
   useEffect(() => {
     if (phase !== 'exam') return;
     try {
       localStorage.setItem(`examProgress_${examId}`, JSON.stringify({
-        attemptId: attempt?.id || null, current, answers, pdfContent,
+        attemptId: attempt?.id || null, current, answers, pdfContent, fraudBlock,
       }));
     } catch { /* storage unavailable/full — resuming just falls back to the start */ }
-  }, [phase, attempt, examId, current, answers, pdfContent]);
+  }, [phase, attempt, examId, current, answers, pdfContent, fraudBlock]);
 
   // Auto-submit when locked — only ever reached once the exam's own timer
   // expires now; a fraud suspension never locks/auto-submits on its own.
@@ -1317,8 +1320,9 @@ export default function ExamPage() {
       const storageKey = `examProgress_${examId}`;
       let restored = false;
       let pdfRestored = false;
+      let saved = null;
       try {
-        const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+        saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
         if (saved) {
           if (att && saved.attemptId === att.id) {
             setCurrent(saved.current || 0);
@@ -1356,6 +1360,17 @@ export default function ExamPage() {
       const elapsedMs = elapsedSeconds * 1000;
       elapsedMsRef.current = elapsedMs;
       breaksUsedRef.current = Math.min(MAX_BREAKS, Math.floor(elapsedMs / BREAK_INTERVAL_MS));
+
+      // Resume an in-progress fraud suspension across the reload too — its
+      // `until` timestamp is wall-clock, so simply re-showing the modal
+      // picks up with exactly the time actually remaining. timeLeft above
+      // is already recomputed from real elapsed time since started_at, so
+      // it already reflects time lost during the suspension; nothing extra
+      // to deduct here, only the modal itself needs restoring. If `until`
+      // has already passed, treat it as naturally expired — don't restore.
+      if (saved?.fraudBlock?.until > Date.now()) {
+        setFraudBlock(saved.fraudBlock);
+      }
 
       setPhase('exam');
     } catch (e) {
@@ -1584,7 +1599,11 @@ export default function ExamPage() {
               <FileText className="h-4 w-4 text-white" />
               <span className="text-xs font-black text-white">Sujet de l'examen</span>
             </div>
-            <iframe src={exam.exam_pdf} title="Sujet de l'examen" className="flex-1 w-full" style={{ border: 'none' }} />
+            {/* #navpanes=0 hides Chrome's built-in PDF.js thumbnail sidebar,
+                #toolbar=0 its top toolbar — together they let the PDF page
+                itself fill 100% of the pane instead of being squeezed by
+                chrome the student never needs here. */}
+            <iframe src={`${exam.exam_pdf}#toolbar=0&navpanes=0`} title="Sujet de l'examen" className="flex-1 w-full" style={{ border: 'none' }} />
           </div>
         )}
 
