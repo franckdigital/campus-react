@@ -1266,7 +1266,7 @@ function ExamSessionRow({ session: s, exam, notify, onGraded }) {
                           style={{ background: '#fef3c7', color: A }}>{i + 1}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold truncate" style={{ color: '#334155' }}>{stripHtml(q.text)}</p>
-                      {q.question_prompt?.trim() && (
+                      {q.question_type === 'TEXT' && q.question_prompt?.trim() && (
                         <p className="text-xs font-semibold mt-0.5" style={{ color: '#7c3aed' }}>{stripHtml(q.question_prompt)}</p>
                       )}
                       {q.question_type === 'TEXT' ? (
