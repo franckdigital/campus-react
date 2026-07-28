@@ -190,7 +190,16 @@ function WebcamMonitor({ examId, sessionId, enabled }) {
   // captures even though the camera itself is working fine.
   const attachVideo = useCallback((node) => {
     videoRef.current = node;
-    if (node && streamRef.current) node.srcObject = streamRef.current;
+    if (node && streamRef.current) {
+      node.srcObject = streamRef.current;
+      // autoPlay alone isn't always honored when srcObject is assigned to a
+      // node that just mounted (vs. one already in the DOM when the stream
+      // arrives) — some browsers then leave the element paused at frame 0
+      // forever, so both the preview and every capture drawn from it stay
+      // blank even though `active`/the green dot correctly say the stream
+      // itself is live. An explicit play() call covers that gap.
+      node.play?.().catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -204,7 +213,10 @@ function WebcamMonitor({ examId, sessionId, enabled }) {
       .then(s => {
         if (!mounted) { s.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = s;
-        if (videoRef.current) videoRef.current.srcObject = s;
+        if (videoRef.current) {
+          videoRef.current.srcObject = s;
+          videoRef.current.play?.().catch(() => {});
+        }
         setActive(true);
         s.getVideoTracks().forEach(track => {
           track.onended = () => {
