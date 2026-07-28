@@ -1386,6 +1386,36 @@ export default function ExamPage() {
     }
   };
 
+  // A refresh must never drop the student back on the "Commencer l'examen"
+  // screen once a session already exists server-side (status STARTED) —
+  // that looked like the exam had been abandoned/reset, when really nothing
+  // was lost. start-session/start-attempt are both idempotent (they resume
+  // the existing session/attempt instead of creating a new one), so calling
+  // startExam() again here is exactly what the "Commencer" button itself
+  // does — it just skips the extra click and jumps straight back into the
+  // exam, restoring answers/pdfContent/fraudBlock from localStorage same as
+  // any other resume.
+  useEffect(() => {
+    if (phase === 'intro' && exam?.my_session?.status === 'STARTED') {
+      startExam();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, exam]);
+
+  // Once the exam is actually launched, the browser Back button must not be
+  // able to leave this screen — it would let a student escape a fraud
+  // suspension, a fullscreen prompt, or the exam entirely without going
+  // through submission. Pushing a dummy history entry and immediately
+  // re-pushing it on every popstate traps the student on the current URL;
+  // there's nothing behind it to go back to for as long as the exam runs.
+  useEffect(() => {
+    if (phase !== 'exam') return;
+    window.history.pushState(null, '', window.location.href);
+    const trapBack = () => window.history.pushState(null, '', window.location.href);
+    window.addEventListener('popstate', trapBack);
+    return () => window.removeEventListener('popstate', trapBack);
+  }, [phase]);
+
   // Submit answers — quiz attempt (if any) and/or the PDF "répondre dans le
   // système" section (if the exam carries a subject PDF), together as one
   // final action. A PDF-only exam has no `attempt` at all, so the old
