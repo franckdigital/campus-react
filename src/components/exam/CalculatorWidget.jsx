@@ -13,13 +13,10 @@ const KEYS = [
 
 /**
  * A real, built-in calculator rendered inside the exam page itself — never a
- * separate window/app. This is deliberate: the proctoring system (webcam
- * object detection + focus/blur tab-switch tracking, see useAntiCheat and
- * examProctoring.js) can't tell a physical calculator apart from a phone
- * held up to the camera, and alt-tabbing to an OS calculator app is itself
- * flagged as a tab switch. Giving students a calculator that lives in the
- * same DOM/tab sidesteps both false-positive paths entirely instead of
- * trying to make the AI "recognize" a calculator, which isn't reliable.
+ * separate window/app. This is deliberate: alt-tabbing to an OS calculator
+ * app is itself flagged as a tab switch by the anti-cheat (see
+ * useAntiCheat). Giving students a calculator that lives in the same
+ * DOM/tab sidesteps that false-positive path entirely.
  */
 export default function CalculatorWidget({ onClose, onInsert }) {
   const [expr, setExpr] = useState('');
