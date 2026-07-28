@@ -6,7 +6,6 @@ import {
   Star, Target, BookOpen, Lock, Eye, LogOut, Calculator as CalculatorIcon, NotebookPen,
 } from 'lucide-react';
 import elearningService from '../../services/elearning';
-import { analyzeFrame, preloadProctoringModels } from '../../utils/examProctoring';
 import { useAuth } from '../../context/AuthContext';
 import PdfModal from '../../components/exam/PdfModal';
 import RichTextEditor from '../../components/exam/RichTextEditor';
@@ -17,23 +16,10 @@ import { sanitizeRichText, stripHtml } from '../../utils/richText';
 /* ── constants ───────────────────────────────────────────────────────────── */
 const LOG_COOLDOWN      = 3000;
 const WEBCAM_INTERVAL   = 30000;
-const DETECT_INTERVAL   = 3000;   // local TF.js detection — cheap, so tighter than the snapshot upload
-const AI_FLAG_COOLDOWN  = 20000;  // avoid spamming log-event while a phone stays in frame
-const FRAUD_HIT_THRESHOLD = 3; // total occurrences of the same issue across the whole exam before a hard block
-const GAZE_LABEL = { gauche: 'vers la gauche', droite: 'vers la droite', haut: 'vers le haut', bas: 'vers le bas' };
-// Looking around (left/right/up/down) is normal and never penalized on its
-// own — only staring at the exact same fixed off-screen point continuously
-// for FIXED_GAZE_MS counts as suspicious (reading notes taped up somewhere,
-// a phone propped in a fixed spot...). A change of direction, or looking
-// back at the screen, resets the streak — this is deliberately NOT the same
-// thing as "away from screen for N total minutes"; scattered glances in
-// different directions never add up to anything here.
-const FIXED_GAZE_MS = 5 * 60 * 1000;
-// First occurrence is logged silently; the 2nd shows a warning; a 3rd
-// occurrence (i.e. once tolerated has been reached again) triggers the
-// normal onFraudBlock suspension pipeline (5 min stage 1, escalating from
-// there exactly like any other repeated violation).
-const FIXED_GAZE_TOLERATED = 2;
+// Flat suspension duration for the only two anti-cheat triggers left: a
+// tab/window switch or a blocked copy/paste. Never escalates, never
+// auto-submits the exam — the student just waits it out and resumes.
+const FRAUD_SUSPEND_MIN = 5;
 
 // Mandatory-but-skippable bathroom breaks: every BREAK_INTERVAL_MS of actual
 // exam time (suspensions/breaks themselves don't count toward this clock),
@@ -84,14 +70,15 @@ function useAntiCheat({ examId, enabled, onFlag, fullscreenEl, onFraudBlock }) {
     onFlag(type, detail);
   }, [examId, onFlag]);
 
-  // Shared by both detection paths (browser-tab switch AND window/app focus loss,
-  // e.g. Alt-Tab to another application, minimizing the window, opening File
+  // Only two things left trigger a suspension at all: switching away from
+  // the exam window/tab, and a copy/paste attempt. Shared by both detection
+  // paths for tab-switch (browser-tab switch AND window/app focus loss, e.g.
+  // Alt-Tab to another application, minimizing the window, opening File
   // Explorer) so neither one can silently skip the block — a single physical
   // switch usually fires both blur and visibilitychange, so debounce here to
-  // avoid double-counting (and double-triggering the fraud block) for one
-  // switch. Leaving the exam window at all is treated as seriously as a
-  // webcam-detected fraud signal — same 5-minute-suspend-then-terminate flow,
-  // triggered on the very first occurrence rather than waiting for a count.
+  // avoid double-counting (and double-triggering the suspension) for one
+  // switch. Always a flat FRAUD_SUSPEND_MIN suspension, on the very first
+  // occurrence — never escalates, never ends the exam on its own.
   const registerTabSwitch = useCallback((detail) => {
     const now = Date.now();
     if (now - lastSwitchAt.current < 1000) return;
@@ -101,14 +88,13 @@ function useAntiCheat({ examId, enabled, onFlag, fullscreenEl, onFraudBlock }) {
     onFraudBlockRef.current?.('Vous avez quitté ou réduit la fenêtre de l\'examen (changement de fenêtre/application détecté).');
   }, [logEvent]);
 
-  // Leaving fullscreen (Esc, OS shortcut...) is exactly the kind of "browsing
-  // the computer" escape hatch fullscreen mode is meant to close — the
-  // backend already had a dedicated FULLSCREEN_EXIT event type and counter
-  // (fullscreen_exit_count) that nothing on the frontend ever fired.
+  // Leaving fullscreen (Esc, OS shortcut...) is still logged/counted
+  // (fullscreen_exit_count) and best-effort re-entered, but no longer
+  // suspends on its own — only an actual tab/window switch or copy/paste
+  // does now.
   const registerFullscreenExit = useCallback(() => {
     fsExitCount.current++;
     logEvent('FULLSCREEN_EXIT', `#${fsExitCount.current}`);
-    onFraudBlockRef.current?.('Vous avez quitté le mode plein écran pendant l\'examen.');
   }, [logEvent]);
 
   useEffect(() => {
@@ -127,7 +113,11 @@ function useAntiCheat({ examId, enabled, onFlag, fullscreenEl, onFraudBlock }) {
       const el = fullscreenEl?.current;
       if (el?.requestFullscreen) el.requestFullscreen().catch(() => {});
     };
-    const blockCopy = e => { e.preventDefault(); logEvent('COPY_ATTEMPT', e.type); };
+    const blockCopyPaste = e => {
+      e.preventDefault();
+      logEvent('COPY_ATTEMPT', e.type);
+      onFraudBlockRef.current?.('Tentative de copier-coller détectée pendant l\'examen.');
+    };
     const blockKeys = e => {
       const blocked = [
         e.key === 'PrintScreen',
@@ -143,16 +133,18 @@ function useAntiCheat({ examId, enabled, onFlag, fullscreenEl, onFraudBlock }) {
     window.addEventListener('blur', onBlur);
     document.addEventListener('visibilitychange', onVis);
     document.addEventListener('fullscreenchange', onFsChange);
-    document.addEventListener('copy', blockCopy);
-    document.addEventListener('cut', blockCopy);
+    document.addEventListener('copy', blockCopyPaste);
+    document.addEventListener('cut', blockCopyPaste);
+    document.addEventListener('paste', blockCopyPaste);
     document.addEventListener('keydown', blockKeys);
     document.addEventListener('contextmenu', blockCtx);
     return () => {
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('visibilitychange', onVis);
       document.removeEventListener('fullscreenchange', onFsChange);
-      document.removeEventListener('copy', blockCopy);
-      document.removeEventListener('cut', blockCopy);
+      document.removeEventListener('copy', blockCopyPaste);
+      document.removeEventListener('cut', blockCopyPaste);
+      document.removeEventListener('paste', blockCopyPaste);
       document.removeEventListener('keydown', blockKeys);
       document.removeEventListener('contextmenu', blockCtx);
     };
@@ -162,12 +154,17 @@ function useAntiCheat({ examId, enabled, onFlag, fullscreenEl, onFraudBlock }) {
 }
 
 /* ── Webcam ──────────────────────────────────────────────────────────────── */
-function WebcamMonitor({ examId, sessionId, enabled, onFlag, onFraudBlock, onGazeWarning, onSuspensionEvent, paused, breakActive }) {
+// Archival only — periodically captures snapshots for the teacher to review
+// during correction, entirely at their own judgment. No local phone/face/
+// gaze detection runs anymore, and nothing here auto-flags or suspends the
+// student: a visible phone, an absent face, someone else in frame, or the
+// candidate stepping away from the screen are never, on their own, treated
+// as a fraud signal by the system.
+function WebcamMonitor({ examId, sessionId, enabled }) {
   const videoRef  = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const [active, setActive] = useState(false);
-  const [faceOk, setFaceOk] = useState(null);
   // The intro screen already confirmed the webcam works before the student
   // was allowed to start, so by the time this mounts any failure to (re-)
   // acquire the stream — including the first attempt here — is a real loss
@@ -179,33 +176,6 @@ function WebcamMonitor({ examId, sessionId, enabled, onFlag, onFraudBlock, onGaz
     reportedLoss.current = true;
     elearningService.logExamEvent(examId, 'WEBCAM_LOST', detail).catch(() => {});
   }, [examId]);
-
-  // Local (in-browser) phone/face detection via TensorFlow.js — no external
-  // AI account needed. Cooldown per message so a phone held up continuously
-  // doesn't flood log-event.
-  const lastAiFlag = useRef({});
-  const flagLocal = useCallback((detail) => {
-    const now = Date.now();
-    if (now - (lastAiFlag.current[detail] || 0) < AI_FLAG_COOLDOWN) return;
-    lastAiFlag.current[detail] = now;
-    if (examId) elearningService.logExamEvent(examId, 'AI_FLAG', detail).catch(() => {});
-    onFlag?.(detail);
-  }, [examId, onFlag]);
-
-  // Kept in refs (not effect deps) so the detection interval below doesn't
-  // get torn down and restarted every time the parent re-renders with a new
-  // callback reference or flips `paused` — only `enabled`/`active` should
-  // do that.
-  const onFraudBlockRef = useRef(onFraudBlock);
-  const onGazeWarningRef = useRef(onGazeWarning);
-  const onSuspensionEventRef = useRef(onSuspensionEvent);
-  const pausedRef = useRef(paused);
-  const breakActiveRef = useRef(breakActive);
-  useEffect(() => { onFraudBlockRef.current = onFraudBlock; }, [onFraudBlock]);
-  useEffect(() => { onGazeWarningRef.current = onGazeWarning; }, [onGazeWarning]);
-  useEffect(() => { onSuspensionEventRef.current = onSuspensionEvent; }, [onSuspensionEvent]);
-  useEffect(() => { pausedRef.current = paused; }, [paused]);
-  useEffect(() => { breakActiveRef.current = breakActive; }, [breakActive]);
 
   // The <video> element only mounts once `active` flips true (see render
   // below), which happens *after* the getUserMedia promise resolves — so at
@@ -247,12 +217,10 @@ function WebcamMonitor({ examId, sessionId, enabled, onFlag, onFraudBlock, onGaz
     return () => { mounted = false; streamRef.current?.getTracks().forEach(t => t.stop()); };
   }, [enabled, reportLoss]);
 
-  // Snapshot archival — periodic evidence images stored server-side for the
-  // admin correction screen, analyzed by Gemini there. Bumped up from the
-  // original 240x180 @ 0.6 quality — those were too soft/blurry for the AI
-  // (and a human reviewer) to make out small objects like a phone held at
-  // arm's length. Detection itself happens locally below in real time; this
-  // is just the archived evidence trail.
+  // Snapshot archival — periodic evidence images stored server-side, purely
+  // for the teacher's own judgment during correction. Bumped up from the
+  // original 240x180 @ 0.6 quality — those were too soft/blurry to make out
+  // small details at arm's length.
   useEffect(() => {
     if (!enabled || !active) return;
     const capture = async () => {
@@ -270,117 +238,6 @@ function WebcamMonitor({ examId, sessionId, enabled, onFlag, onFraudBlock, onGaz
     return () => clearInterval(t);
   }, [enabled, active, sessionId]);
 
-  // Local, in-browser phone/face/gaze detection (TensorFlow.js coco-ssd +
-  // blazeface). Runs entirely on-device — no API key, no per-image network
-  // cost — and tighter than the snapshot interval since it's free to run
-  // more often. Two tiers of response:
-  //  - A single positive tick raises the lightweight banner + AI_FLAG log
-  //    (flagLocal, cooldown-based) so the admin sees *something* happened.
-  //  - The SAME category reaching FRAUD_HIT_THRESHOLD total occurrences
-  //    ANYWHERE across the exam — not necessarily back-to-back — escalates
-  //    to a hard block (onFraudBlock). Counting cumulatively rather than
-  //    requiring consecutive ticks matters in practice: a student flashing a
-  //    phone briefly several times, minutes apart, is just as much a
-  //    repeated attempt as one continuous 6-second hold, and a strict
-  //    consecutive-run requirement let every one of those brief attempts
-  //    reset the count back to zero before it could ever add up.
-  useEffect(() => {
-    if (!enabled || !active) return;
-    let cancelled = false;
-    let busy = false;
-    // multiFace deliberately excluded — a person visible beside/behind the
-    // student is never auto-suspended, only left for the teacher to judge
-    // from the archived snapshots during correction (see notify below).
-    const totals = { phone: 0, noFace: 0 };
-    // Fixed-gaze tracking: fixedGazeDir is the direction currently being held
-    // continuously (or null = looking at the screen), fixedGazeStart is when
-    // that streak began. A change of direction (including back to the
-    // screen) resets the streak — only one *unchanging* direction sustained
-    // for FIXED_GAZE_MS ever counts, never scattered glancing around.
-    let fixedGazeDir = null;
-    let fixedGazeStart = Date.now();
-    let fixedGazeCounted = false;
-    let fixedGazeEvents = 0;
-    const detect = async () => {
-      if (busy) return;
-      busy = true;
-      const result = await analyzeFrame(videoRef.current);
-      busy = false;
-      if (cancelled || !result) return;
-      const { phoneDetected, faceCount, gazeAway } = result;
-      setFaceOk(faceCount === 1);
-
-      if (breakActiveRef.current) {
-        // Authorized break — the periodic snapshot upload (separate effect
-        // above) keeps recording regardless, so the teacher still has the
-        // full visual trail to review; only the AI escalation/suspension
-        // pipeline is skipped here, since stepping away is expected and
-        // must never itself count as an incident.
-        fixedGazeDir = null; // don't let a streak spanning the break get misattributed once resumed
-        return;
-      }
-
-      if (pausedRef.current) {
-        // Suspended (5- or 10-minute block) — keep watching instead of going
-        // blind, but route any positive reading into the suspension-review
-        // collector rather than the normal strike/threshold pipeline below,
-        // which is for detecting the *first* offense. Once already
-        // suspended, a single positive reading is worth surfacing to the
-        // student at the resume review, full stop — see onSuspensionEvent.
-        // multiFace is NOT collected here either — same reasoning as above.
-        if (phoneDetected) onSuspensionEventRef.current?.('phone', 'Objet suspect (téléphone, cahier, notes...) tenu ou visible.');
-        else if (faceCount === 0) onSuspensionEventRef.current?.('noFace', 'Absence du champ de la webcam (déplacement, éloignement, ou levé du poste).');
-        fixedGazeDir = null; // don't let a streak spanning the pause boundary get misattributed once resumed
-        return;
-      }
-
-      if (phoneDetected) {
-        flagLocal('Téléphone détecté (analyse locale sur l\'appareil) — tentative de fraude signalée.');
-      } else if (faceCount === 0) {
-        flagLocal('Visage non détecté (analyse locale) — restez visible pendant l\'examen.');
-      } else if (faceCount > 1) {
-        // Informational only — logged for the teacher's post-exam review of
-        // the archived snapshots, never escalated or suspended on its own.
-        flagLocal('Plusieurs visages détectés dans le champ de la webcam (analyse locale) — à vérifier par l\'enseignant lors de la correction.');
-      }
-
-      if (phoneDetected) totals.phone++;
-      if (faceCount === 0) totals.noFace++;
-
-      // Fixed-gaze escalation — see FIXED_GAZE_MS/FIXED_GAZE_TOLERATED above.
-      if (gazeAway && gazeAway === fixedGazeDir) {
-        if (!fixedGazeCounted && Date.now() - fixedGazeStart >= FIXED_GAZE_MS) {
-          fixedGazeCounted = true;
-          fixedGazeEvents++;
-          if (fixedGazeEvents > FIXED_GAZE_TOLERATED) {
-            onFraudBlockRef.current?.(
-              `Regard fixé sur un même point pendant plus de 5 minutes, comportement répété (${fixedGazeEvents} fois) — comportement suspect confirmé.`
-            );
-          } else if (fixedGazeEvents === FIXED_GAZE_TOLERATED) {
-            onGazeWarningRef.current?.(fixedGazeEvents);
-          }
-        }
-      } else {
-        // Direction changed (including a normal glance back at the screen) —
-        // this is exactly the "looking around" behaviour that's allowed, so
-        // just restart the streak on whatever the new direction is.
-        fixedGazeDir = gazeAway;
-        fixedGazeStart = Date.now();
-        fixedGazeCounted = false;
-      }
-
-      if (totals.phone >= FRAUD_HIT_THRESHOLD) {
-        totals.phone = 0;
-        onFraudBlockRef.current?.('Un objet suspect (téléphone, papier, ou autre) a été tenu ou approché de votre visage à plusieurs reprises pendant l\'examen.');
-      } else if (totals.noFace >= FRAUD_HIT_THRESHOLD) {
-        totals.noFace = 0;
-        onFraudBlockRef.current?.('Vous avez quitté le champ de la webcam ou regardé derrière vous à plusieurs reprises pendant l\'examen.');
-      }
-    };
-    const t = setInterval(detect, DETECT_INTERVAL); detect();
-    return () => { cancelled = true; clearInterval(t); };
-  }, [enabled, active, flagLocal]);
-
   if (!enabled) return null;
   return (
     <div className="relative flex-shrink-0">
@@ -389,8 +246,7 @@ function WebcamMonitor({ examId, sessionId, enabled, onFlag, onFraudBlock, onGaz
                 : <div className="w-full h-full flex items-center justify-center"><CameraOff size={16} className="text-gray-600" /></div>}
       </div>
       <canvas ref={canvasRef} className="hidden" />
-      <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${
-        !active ? 'bg-gray-400' : faceOk === false ? 'bg-red-500 animate-pulse' : 'bg-green-400'}`} />
+      <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${active ? 'bg-green-400' : 'bg-gray-400'}`} />
     </div>
   );
 }
@@ -410,13 +266,10 @@ function WebcamMonitor({ examId, sessionId, enabled, onFlag, onFraudBlock, onGaz
 // time writing.
 //
 // The rich-text editor + built-in calculator below exist for the same
-// anti-cheat reason as the missing file-upload mode: a physical calculator
-// held up to the webcam is indistinguishable from a phone to the proctoring
-// object-detector (see examProctoring.js's PHONE_LABELS/nearFace heuristics),
-// and alt-tabbing to an OS calculator app is itself read as a tab switch.
-// Giving students a calculator that lives inside this same page sidesteps
-// both false-positive paths entirely, instead of trying to teach the model
-// to "recognize" a calculator, which isn't reliable.
+// anti-cheat reason as the missing file-upload mode: alt-tabbing to an OS
+// calculator app is itself read as a tab switch. Giving students a
+// calculator that lives inside this same page sidesteps that false-positive
+// path entirely.
 function PdfAnswerSection({ examId, sessionId, content, setContent, error }) {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -822,11 +675,12 @@ function SubmitModal({ answered, total, onConfirm, onCancel }) {
 }
 
 /* ── LOCKED OVERLAY ──────────────────────────────────────────────────────── */
-function LockedOverlay({ submitted, reason = 'timer', fraudReason, onViewResults, onDashboard, onLogout }) {
-  const title = reason === 'fraud' ? 'Examen terminé — récidive de fraude' : 'Temps écoulé';
-  const subtitle = reason === 'fraud'
-    ? (fraudReason || 'Un second comportement suspect a été détecté après le premier avertissement.')
-    : 'Le temps imparti est écoulé.';
+// Only ever reached when the exam's own timer runs out — a fraud suspension
+// (see FraudSuspensionModal) never leads here anymore, it just pauses and
+// resumes the exam.
+function LockedOverlay({ submitted, onViewResults, onDashboard, onLogout }) {
+  const title = 'Temps écoulé';
+  const subtitle = 'Le temps imparti est écoulé.';
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
          style={{ background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(8px)' }}>
@@ -879,18 +733,16 @@ function LockedOverlay({ submitted, reason = 'timer', fraudReason, onViewResults
 }
 
 /* ── FRAUD SUSPENSION MODAL ──────────────────────────────────────────────── */
-// First offense: a sustained suspicious signal from the webcam (see
-// WebcamMonitor's streak tracking below) suspends the exam behind this
-// blocking overlay for 5 minutes rather than ending it outright — a single
-// incident could still be a false positive (bad lighting, a stretch), so the
-// student gets one chance to resume normally. The exam clock is paused for
-// the duration (handleFraudBlock deducts a flat 5 minutes from timeLeft up
-// front instead) — letting it keep running live in the background used to
-// silently burn through a short exam's remaining time *during* the block,
-// making the resume look broken (exam flashes back for a few seconds, then
-// closes on its own). A repeat offense after resuming is handled separately
-// by ending the session (see handleFraudBlock / LockedOverlay reason="fraud").
-function FraudSuspensionModal({ reason, until, stage, onExpire }) {
+// A tab/window switch or a copy/paste attempt suspends the exam behind this
+// blocking overlay for a flat FRAUD_SUSPEND_MIN minutes — never escalates,
+// never ends the exam: the student just waits it out and resumes exactly
+// where they were. The exam clock is paused for the duration
+// (handleFraudBlock deducts the minutes from timeLeft up front instead) —
+// letting it keep running live in the background used to silently burn
+// through a short exam's remaining time *during* the block, making the
+// resume look broken (exam flashes back for a few seconds, then closes on
+// its own).
+function FraudSuspensionModal({ reason, until, onExpire }) {
   const [remaining, setRemaining] = useState(0);
 
   useEffect(() => {
@@ -906,7 +758,6 @@ function FraudSuspensionModal({ reason, until, stage, onExpire }) {
 
   const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
   const ss = String(remaining % 60).padStart(2, '0');
-  const minutes = stage === 2 ? 10 : 5;
 
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
@@ -917,102 +768,14 @@ function FraudSuspensionModal({ reason, until, stage, onExpire }) {
           <ShieldAlert className="h-10 w-10" style={{ color: '#ef4444' }} />
         </div>
         <div>
-          <h1 className="text-xl font-black" style={{ color: '#1e293b' }}>
-            Examen suspendu — comportement suspect détecté{stage === 2 ? ' (récidive)' : ''}
-          </h1>
+          <h1 className="text-xl font-black" style={{ color: '#1e293b' }}>Examen suspendu</h1>
           <p className="mt-2 text-sm leading-relaxed" style={{ color: '#64748b' }}>{reason}</p>
         </div>
         <div className="text-5xl font-black tabular-nums" style={{ color: '#ef4444' }}>{mm}:{ss}</div>
         <p className="text-xs leading-relaxed" style={{ color: '#94a3b8' }}>
-          La webcam continue de vous surveiller pendant cette suspension. L'examen reprendra automatiquement à la fin
-          du compte à rebours. Ces {minutes} minutes sont déduites de votre temps d'examen — le chronomètre est pour
-          l'instant en pause et reprendra là où il en était.
-          {stage === 2
-            ? ' En cas de nouveau comportement suspect pendant cette suspension, votre examen sera immédiatement terminé et vos réponses soumises pour correction.'
-            : ' Si un comportement suspect est de nouveau détecté pendant cette suspension, une suspension plus longue (10 minutes) s\'appliquera à la reprise.'}
+          L'examen reprendra automatiquement à la fin du compte à rebours. Ces {FRAUD_SUSPEND_MIN} minutes sont
+          déduites de votre temps d'examen — le chronomètre est pour l'instant en pause et reprendra là où il en était.
         </p>
-      </div>
-    </div>
-  );
-}
-
-/* ── SUSPENSION REVIEW MODAL ─────────────────────────────────────────────── */
-// Shown right when a suspension (5 or 10 min) expires AND the webcam caught
-// further suspicious behavior *during* that suspension (see WebcamMonitor's
-// paused-but-still-watching branch, which feeds onSuspensionEvent instead of
-// the normal live-detection pipeline while fraudBlock is active). Requires
-// an explicit acknowledgment before applying the consequence (a longer
-// suspension, or closing the exam) so the student can't miss what was
-// recorded — see acknowledgeSuspensionReview.
-function SuspensionReviewModal({ summary, outcome, onAcknowledge }) {
-  return (
-    <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
-         style={{ background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(8px)' }}>
-      <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 text-center space-y-5">
-        <div className="h-20 w-20 rounded-full flex items-center justify-center mx-auto"
-             style={{ background: '#fef2f2', border: '3px solid #fca5a5' }}>
-          <ShieldAlert className="h-10 w-10" style={{ color: '#ef4444' }} />
-        </div>
-        <div>
-          <h1 className="text-xl font-black" style={{ color: '#1e293b' }}>
-            Comportements suspects détectés pendant la suspension
-          </h1>
-          <p className="mt-2 text-sm" style={{ color: '#64748b' }}>
-            Voici ce que la webcam a observé pendant que votre examen était suspendu :
-          </p>
-        </div>
-        <ul className="text-left space-y-2 rounded-2xl p-4" style={{ background: '#fef2f2' }}>
-          {summary.map((s, i) => (
-            <li key={i} className="text-sm flex items-start gap-2" style={{ color: '#7f1d1d' }}>
-              <span className="mt-1.5 h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ background: '#ef4444' }} />
-              {s}
-            </li>
-          ))}
-        </ul>
-        <p className="text-sm font-black" style={{ color: '#dc2626' }}>
-          {outcome === 'lock'
-            ? 'Votre examen est immédiatement terminé et vos réponses sont soumises pour correction.'
-            : 'Votre examen est suspendu pour 10 minutes supplémentaires.'}
-        </p>
-        <button onClick={onAcknowledge}
-                className="w-full py-3.5 rounded-2xl text-sm font-black text-white"
-                style={{ background: 'linear-gradient(135deg,#ef4444,#dc2626)' }}>
-          J'ai compris
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ── GAZE WARNING MODAL ──────────────────────────────────────────────────── */
-// Shown once the fixed-gaze streak hits FIXED_GAZE_TOLERATED occurrences —
-// requires an explicit acknowledgment (not a transient banner) since the
-// very next occurrence triggers an actual suspension.
-function GazeWarningModal({ eventCount, onAcknowledge }) {
-  return (
-    <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
-         style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}>
-      <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 text-center space-y-5">
-        <div className="h-20 w-20 rounded-full flex items-center justify-center mx-auto"
-             style={{ background: '#fffbeb', border: '3px solid #fde68a' }}>
-          <AlertTriangle className="h-10 w-10" style={{ color: '#d97706' }} />
-        </div>
-        <div>
-          <h1 className="text-xl font-black" style={{ color: '#1e293b' }}>Avertissement — regard fixe prolongé</h1>
-          <p className="mt-2 text-sm leading-relaxed" style={{ color: '#64748b' }}>
-            Votre regard est resté fixé sur un même point pendant plus de 5 minutes, à {eventCount} reprises.
-            Regarder autour de vous (à gauche, à droite, devant vous) n'est pas pénalisé — seul un regard
-            immobile et prolongé sur un point fixe est surveillé.
-          </p>
-        </div>
-        <p className="text-xs font-bold px-4 py-3 rounded-2xl" style={{ background: '#fef2f2', color: '#dc2626' }}>
-          Si ce comportement se reproduit, votre examen sera automatiquement suspendu pendant 5 minutes.
-        </p>
-        <button onClick={onAcknowledge}
-                className="w-full py-3.5 rounded-2xl text-sm font-black text-white"
-                style={{ background: 'linear-gradient(135deg,#d97706,#b45309)' }}>
-          J'ai compris
-        </button>
       </div>
     </div>
   );
@@ -1107,10 +870,6 @@ function IntroPage({ exam, onStart, error, attemptsExhausted, starting }) {
         // Only testing access here — WebcamMonitor opens its own stream once
         // the exam actually starts, so release this one immediately.
         stream.getTracks().forEach(t => t.stop());
-        // Kick off the TF.js model download now (~10MB) so it's already
-        // cached by the time WebcamMonitor needs it, instead of stalling the
-        // first detection tick of the exam.
-        preloadProctoringModels();
         if (!cancelled) setWebcamStatus('ready');
       })
       .catch(err => {
@@ -1322,35 +1081,15 @@ export default function ExamPage() {
   const [submitting, setSubmitting] = useState(false);
   const [starting, setStarting] = useState(false);
   const [autoSubmitted, setAutoSubmitted] = useState(false);
-  const [lockReason, setLockReason]     = useState('timer'); // 'timer' | 'fraud'
   const [error, setError]       = useState('');
   const [result, setResult]     = useState(null);
   const [attemptsExhausted, setAttemptsExhausted] = useState(false);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
-  const [fraudAlert, setFraudAlert] = useState(null);
-  // Sustained-behavior webcam block (see WebcamMonitor's streak tracking):
-  // 1st offense suspends 5 min (stage 1), a repeat offense *during* that
-  // suspension escalates to a 10-min suspension (stage 2, see
-  // suspensionEvents/escalateFraud below), and a third strike ends the exam.
-  const [fraudBlock, setFraudBlock] = useState(null); // { reason, until, stage } | null
-  const [fraudLockMessage, setFraudLockMessage] = useState('');
-  // Set while resolving a just-expired suspension that caught further
-  // misbehavior (logging the event server-side, deciding the next stage) —
-  // keeps the exam timer/webcam paused through that brief async gap so no
-  // time or detection is lost between the modals.
-  const [escalating, setEscalating] = useState(false);
-  // { summary: string[], outcome: 'lock' | 'suspend10' } | null — drives
-  // SuspensionReviewModal once a suspension expires with captured events.
-  const [suspensionReview, setSuspensionReview] = useState(null);
-  // Per-category tally of what the webcam caught *during* the current
-  // suspension — reset at the start of each new suspension stage, read once
-  // at expiry to build the review. { [category]: { detail, count } }
-  const suspensionEvents = useRef({});
-  // Fixed-gaze warning (see WebcamMonitor/FIXED_GAZE_TOLERATED) — set to the
-  // occurrence count when the tolerated threshold is reached; requires an
-  // explicit acknowledgment (unlike the transient fraudAlert banner) since
-  // the next occurrence triggers an actual suspension.
-  const [gazeWarning, setGazeWarning] = useState(null);
+  // Flat, single-stage suspension (see useAntiCheat's registerTabSwitch/
+  // blockCopyPaste) — a tab/window switch or a copy/paste attempt suspends
+  // the exam for FRAUD_SUSPEND_MIN minutes, then resumes automatically.
+  // Never escalates and never ends the exam on its own.
+  const [fraudBlock, setFraudBlock] = useState(null); // { reason, until } | null
   // Mandatory-but-skippable bathroom break (see BREAK_* constants) — null
   // outside a break, otherwise { index, until }. Time spent here is excluded
   // from both the exam countdown and the elapsed-time clock that schedules
@@ -1358,7 +1097,6 @@ export default function ExamPage() {
   const [breakState, setBreakState] = useState(null);
   const breaksUsedRef = useRef(0);
   const elapsedMsRef = useRef(0);
-  const [showPdf, setShowPdf] = useState(false);
   // "Répondre dans le système" section for exams that carry a PDF subject
   // (subject_file/exam_pdf) — shown alongside the quiz stepper when the exam
   // also has a quiz, or in its place when the exam is PDF-only. Submitted
@@ -1368,7 +1106,6 @@ export default function ExamPage() {
   const [pdfError, setPdfError] = useState('');
   const [contentTab, setContentTab] = useState('questions'); // 'questions' | 'pdf' — only relevant when both a quiz and a PDF are present
   const fullscreenEl = useRef(null);
-  const fraudAlertTimer = useRef(null);
 
   // Load exam info
   useEffect(() => {
@@ -1388,7 +1125,7 @@ export default function ExamPage() {
   }, [examId]);
 
   // Global countdown — paused while fraudBlock is active (see
-  // handleFraudBlock below, which deducts the 5-minute penalty from
+  // handleFraudBlock below, which deducts the suspension's minutes from
   // timeLeft up front instead). Letting this interval keep running in the
   // background during the suspension modal used to silently drain the
   // clock in real time; on a short exam that could burn through all the
@@ -1396,7 +1133,7 @@ export default function ExamPage() {
   // for only a few seconds before the (already independently expiring)
   // timer closed it — looking like the resume itself was broken.
   useEffect(() => {
-    if (phase !== 'exam' || fraudBlock || escalating || suspensionReview || breakState) return;
+    if (phase !== 'exam' || fraudBlock || breakState) return;
     const t = setInterval(() => {
       // Bathroom-break scheduling — ticks alongside the exam countdown so a
       // fraud suspension or an already-active break never counts toward the
@@ -1426,7 +1163,7 @@ export default function ExamPage() {
       });
     }, 1000);
     return () => clearInterval(t);
-  }, [phase, fraudBlock, escalating, suspensionReview, breakState]);
+  }, [phase, fraudBlock, breakState]);
 
   // Keep a stable ref to handleSubmit to avoid stale closure in locked effect
   const handleSubmitRef = useRef(null);
@@ -1445,7 +1182,8 @@ export default function ExamPage() {
     } catch { /* storage unavailable/full — resuming just falls back to the start */ }
   }, [phase, attempt, examId, current, answers, pdfContent]);
 
-  // Auto-submit when locked (tab switch limit hit OR timer expired)
+  // Auto-submit when locked — only ever reached once the exam's own timer
+  // expires now; a fraud suspension never locks/auto-submits on its own.
   useEffect(() => {
     if (phase !== 'locked') return;
     handleSubmitRef.current?.(true).then(() => setAutoSubmitted(true));
@@ -1462,108 +1200,29 @@ export default function ExamPage() {
     setFlags(f => [...f.slice(-3), { type, message: msgs[type] || type }]);
   }, []);
 
-  // Webcam-based fraud signal (phone visible / face missing) — shown as a
-  // prominent on-screen banner rather than the small top-bar chip used for
-  // client-detected events, since this comes from the AI vision check and
-  // is the strongest evidence of an actual cheating attempt.
-  const onWebcamFlag = useCallback((message) => {
-    setFraudAlert(message);
-    clearTimeout(fraudAlertTimer.current);
-    fraudAlertTimer.current = setTimeout(() => setFraudAlert(null), 8000);
-  }, []);
-
-  // Tolerated looking-away incident — escalating warning, no suspension yet
-  // (see WebcamMonitor: escalates on its own via onFraudBlock once either
-  // running total, incident count or cumulated time, crosses its threshold).
-  const onGazeWarning = useCallback((eventCount) => {
-    setGazeWarning(eventCount);
-  }, []);
-
-  // Sustained webcam fraud signal (see WebcamMonitor) — the first ever
-  // trigger for this exam attempt. The backend keeps the authoritative
-  // block count on the session (survives a page refresh mid-block, unlike
-  // client state): count 1 → 5-minute suspension (stage 1), count 2 →
-  // 10-minute suspension (stage 2 — only reachable here if a refresh lost
-  // the local suspensionReview state; the normal path to stage 2 is
-  // escalateFraud below), count 3+ → exam closed.
-  const handleFraudBlock = useCallback(async (reason) => {
+  // Tab/window switch or copy/paste — the only two things left that suspend
+  // the exam. Always a flat FRAUD_SUSPEND_MIN minutes, logged server-side
+  // for the teacher's own review (fraud_block_count), but never escalates
+  // and never ends the exam on its own — the student just waits it out and
+  // resumes exactly where they were.
+  const handleFraudBlock = useCallback((reason) => {
     if (phase !== 'exam' || fraudBlock) return;
-    let res = null;
-    try { res = await elearningService.logExamEvent(examId, 'FRAUD_BLOCK', reason); } catch {}
-    const count = res?.fraud_block_count ?? 1;
-    if (count >= 3) {
-      setFraudLockMessage(reason);
-      setLockReason('fraud');
-      setPhase('locked');
-      return;
-    }
-    const stage = count >= 2 ? 2 : 1;
-    const durationMin = stage === 2 ? 10 : 5;
-    suspensionEvents.current = {};
+    elearningService.logExamEvent(examId, 'FRAUD_BLOCK', reason).catch(() => {});
     // Deduct the penalty once, up front, rather than letting the countdown
     // keep running live during the suspension — the global countdown effect
-    // pauses whenever fraudBlock/escalating/suspensionReview is set, so this
-    // is the only place time is actually lost to the block.
-    setTimeLeft(t => Math.max(0, t - durationMin * 60));
-    setFraudBlock({ reason, until: Date.now() + durationMin * 60 * 1000, stage });
+    // pauses whenever fraudBlock is set, so this is the only place time is
+    // actually lost to the block.
+    setTimeLeft(t => Math.max(0, t - FRAUD_SUSPEND_MIN * 60));
+    setFraudBlock({ reason, until: Date.now() + FRAUD_SUSPEND_MIN * 60 * 1000 });
   }, [phase, fraudBlock, examId]);
 
-  // Called once per webcam tick while a suspension is active (see
-  // WebcamMonitor's paused-but-still-watching branch) — tallies what's
-  // observed instead of acting on it immediately; the tally is only read
-  // once, when the suspension's countdown naturally expires (see
-  // handleSuspensionExpire), so a brief/borderline glance during the
-  // suspension doesn't retrigger anything mid-countdown.
-  const onSuspensionEvent = useCallback((category, detail) => {
-    const prev = suspensionEvents.current[category];
-    suspensionEvents.current[category] = { detail, count: (prev?.count || 0) + 1 };
-  }, []);
-
-  // A suspension just expired with events captured during it — log one more
-  // FRAUD_BLOCK server-side (bumping the authoritative count) and, based on
-  // what that count becomes, decide whether the student is about to see a
-  // longer (10-min) suspension or the exam closing outright. Either way the
-  // decision is shown via SuspensionReviewModal before it's actually applied
-  // — see acknowledgeSuspensionReview.
-  const escalateFraud = useCallback(async (events) => {
-    const summary = events.map(e => e.count > 1 ? `${e.detail} (×${e.count})` : e.detail);
-    const reasonText = `Comportement suspect détecté pendant la suspension : ${summary.join(' · ')}`;
-    let res = null;
-    try { res = await elearningService.logExamEvent(examId, 'FRAUD_BLOCK', reasonText); } catch {}
-    const count = res?.fraud_block_count ?? 2;
-    setSuspensionReview({ summary, outcome: count >= 3 ? 'lock' : 'suspend10', reasonText });
-  }, [examId]);
-
-  // FraudSuspensionModal's onExpire — resolves to either a plain resume (no
-  // events captured), or hands off to escalateFraud/SuspensionReviewModal.
+  // FraudSuspensionModal's onExpire — just resumes; if the suspension itself
+  // ran the clock down to zero, the exam locks (legitimately, on time) right
+  // after.
   const handleSuspensionExpire = useCallback(() => {
-    const events = Object.values(suspensionEvents.current);
-    suspensionEvents.current = {};
     setFraudBlock(null);
-    if (events.length === 0) {
-      if (timeLeft <= 0) { setLockReason('timer'); setPhase('locked'); }
-      return;
-    }
-    setEscalating(true);
-    escalateFraud(events).finally(() => setEscalating(false));
-  }, [timeLeft, escalateFraud]);
-
-  // SuspensionReviewModal's acknowledgment — only now does the decided
-  // outcome (10-min suspension or exam closure) actually take effect.
-  const acknowledgeSuspensionReview = useCallback(() => {
-    const review = suspensionReview;
-    setSuspensionReview(null);
-    if (!review) return;
-    if (review.outcome === 'lock') {
-      setFraudLockMessage(review.reasonText);
-      setLockReason('fraud');
-      setPhase('locked');
-    } else {
-      suspensionEvents.current = {};
-      setTimeLeft(t => Math.max(0, t - 10 * 60));
-      setFraudBlock({ reason: review.reasonText, until: Date.now() + 10 * 60 * 1000, stage: 2 });
-    }
-  }, [suspensionReview]);
+    if (timeLeft <= 0) setPhase('locked');
+  }, [timeLeft]);
 
   useAntiCheat({
     examId,
@@ -1782,8 +1441,6 @@ export default function ExamPage() {
     return (
       <LockedOverlay
         submitted={autoSubmitted}
-        reason={lockReason}
-        fraudReason={fraudLockMessage}
         onViewResults={autoSubmitted ? () => setPhase('submitted') : null}
         onDashboard={() => navigate('/student/dashboard/elearning')}
         onLogout={handleLogout}
@@ -1815,23 +1472,12 @@ export default function ExamPage() {
           onCancel={() => setShowSubmitModal(false)}
         />
       )}
-      {fraudBlock && !suspensionReview && (
+      {fraudBlock && (
         <FraudSuspensionModal
           reason={fraudBlock.reason}
           until={fraudBlock.until}
-          stage={fraudBlock.stage}
           onExpire={handleSuspensionExpire}
         />
-      )}
-      {suspensionReview && (
-        <SuspensionReviewModal
-          summary={suspensionReview.summary}
-          outcome={suspensionReview.outcome}
-          onAcknowledge={acknowledgeSuspensionReview}
-        />
-      )}
-      {gazeWarning && (
-        <GazeWarningModal eventCount={gazeWarning} onAcknowledge={() => setGazeWarning(null)} />
       )}
       {breakState && (
         <BreakModal index={breakState.index} until={breakState.until} onResume={() => setBreakState(null)} />
@@ -1872,27 +1518,9 @@ export default function ExamPage() {
             </span>
           </div>
 
-          {/* PDF sujet — in-page modal only, never a new tab, so consulting
-              it mid-exam can't be mistaken for a tab switch. Deliberately
-              styled as a solid, high-contrast button (not a subtle chip) —
-              this is the primary way to (re-)read the subject during a
-              surveilled exam and needs to stand out next to the timer. */}
-          {exam?.exam_pdf && (
-            <button onClick={() => setShowPdf(true)}
-                    className="order-3 sm:order-4 flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-black text-white transition-all hover:brightness-110 active:scale-[0.98]"
-                    style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', boxShadow: '0 4px 12px rgba(124,58,237,0.35)' }}>
-              <FileText className="h-4 w-4" />
-              Sujet
-            </button>
-          )}
-          {showPdf && <PdfModal url={exam.exam_pdf} onClose={() => setShowPdf(false)} />}
-
           {/* Webcam */}
           <div className="order-3 sm:order-4">
-            <WebcamMonitor examId={examId} sessionId={session?.id} enabled={!!exam?.webcam_required}
-                           onFlag={onWebcamFlag} onFraudBlock={handleFraudBlock} onGazeWarning={onGazeWarning}
-                           onSuspensionEvent={onSuspensionEvent} paused={!!fraudBlock || escalating}
-                           breakActive={!!breakState} />
+            <WebcamMonitor examId={examId} sessionId={session?.id} enabled={!!exam?.webcam_required} />
           </div>
 
           {/* Submit */}
@@ -1912,19 +1540,32 @@ export default function ExamPage() {
         </div>
       </div>
 
-      {fraudAlert && (
-        <div className="flex-shrink-0 flex items-center gap-2 px-6 py-2.5" style={{ background: '#dc2626' }}>
-          <ShieldAlert className="h-4 w-4 text-white flex-shrink-0" />
-          <p className="text-sm font-bold text-white">{fraudAlert}</p>
-        </div>
-      )}
 
       {/* ── MAIN AREA ── */}
       {/* Stacked (question, then navigator below) and whole-page-scrolling on
           mobile/tablet — the fixed side-by-side split (question left, w-64
           navigator right) only has room to breathe on a desktop-width
           viewport; below md it left the question area squeezed into a sliver. */}
-      <div className="flex-1 overflow-y-auto md:overflow-hidden flex flex-col gap-3 p-3 sm:p-6">
+      <div className="flex-1 overflow-y-auto md:overflow-hidden flex flex-col md:flex-row gap-3 p-3 sm:p-6">
+        {/* Sujet — shown automatically the moment composition starts (no more
+            click-to-open button/modal), taking half the screen alongside the
+            questions/answer on desktop. Stacked above the content, at a fixed
+            height, on narrow screens where a true 50/50 split wouldn't leave
+            room to work. Never a new tab (iframe, in-page) so it can't be
+            mistaken for a tab switch by the anti-cheat. */}
+        {exam?.exam_pdf && (
+          <div className="w-full md:w-1/2 flex-shrink-0 flex flex-col rounded-2xl overflow-hidden"
+               style={{ height: '50vh' }}>
+            <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2"
+                 style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>
+              <FileText className="h-4 w-4 text-white" />
+              <span className="text-xs font-black text-white">Sujet de l'examen</span>
+            </div>
+            <iframe src={exam.exam_pdf} title="Sujet de l'examen" className="flex-1 w-full" style={{ border: 'none' }} />
+          </div>
+        )}
+
+        <div className="flex-1 md:overflow-hidden flex flex-col gap-3 min-w-0">
         {/* Questions / Réponse PDF switcher — only shown when the exam
             combines a quiz AND a PDF subject; a PDF-only exam skips straight
             to the answer section below, a quiz-only exam skips straight to
@@ -2017,6 +1658,7 @@ export default function ExamPage() {
               <p className="text-sm">Aucune question disponible</p>
             </div>
           )}
+        </div>
         </div>
       </div>
     </div>
