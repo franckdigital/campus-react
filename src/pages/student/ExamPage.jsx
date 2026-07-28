@@ -117,7 +117,17 @@ function useAntiCheat({ examId, enabled, onFlag, fullscreenEl, onFraudBlock }) {
 
   useEffect(() => {
     if (!enabled) return;
-    const onBlur   = () => registerTabSwitch('Window lost focus');
+    const onBlur   = () => {
+      // Clicking inside the in-page PDF subject <iframe> to scroll/select
+      // text moves focus into that frame and fires `blur` on the parent
+      // window exactly like switching to another tab/app does — even
+      // though the student never left this page. document.activeElement
+      // becomes the <iframe> element itself in that specific case (and
+      // only that case), so this is the reliable way to tell the two
+      // apart without also missing a genuine tab/app switch.
+      if (document.activeElement?.tagName === 'IFRAME') return;
+      registerTabSwitch('Window lost focus');
+    };
     const onVis    = () => {
       if (document.hidden) registerTabSwitch(`#${tabCount.current + 1}`);
     };
