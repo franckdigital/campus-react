@@ -6,10 +6,11 @@ import {
   CheckCircle, Clock, ChevronDown, ChevronUp, FileText, Award,
   BarChart2, X, Search, Users, Trophy, AlertTriangle, Plus,
   Hash, ToggleLeft, Type, ListChecks, GitCompare, ArrowUpDown,
-  Camera, ShieldAlert, Calendar, XCircle, MessageCircle,
+  Camera, ShieldAlert, Calendar, XCircle, MessageCircle, Trash2,
 } from 'lucide-react';
 import { elearningService } from '../../services/elearning';
 import { useApi } from '../../hooks/useApi';
+import { useConfirm } from '../../components/ConfirmDialog';
 
 const P = '#7c3aed';
 const C = '#db2777';
@@ -865,6 +866,27 @@ function ExamSessionRow({ session: s, exam, notify, onGraded }) {
   const [showSnapshots, setShowSnapshots] = useState(false);
   const [showConduct, setShowConduct] = useState(false);
   const [lightbox, setLightbox] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const confirm = useConfirm();
+
+  const handleDelete = async () => {
+    const ok = await confirm({
+      title: 'Supprimer cette soumission ?',
+      message: `La copie de ${s.student_name || 'cet étudiant'} sera définitivement supprimée (réponses, captures, notes) et il pourra repasser l'examen.`,
+      confirmLabel: 'Supprimer',
+      destructive: true,
+    });
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      await elearningService.deleteExamSession(s.id);
+      notify({ type: 'success', title: 'Soumission supprimée', message: '' });
+      onGraded();
+    } catch (e) {
+      notify({ type: 'error', title: 'Erreur', message: e.message || 'Suppression impossible.' });
+      setDeleting(false);
+    }
+  };
 
   // Student-authored explanations of their own behavior during the exam
   // (e.g. "I had to stand up because...") — logged via the same generic
@@ -1085,6 +1107,11 @@ function ExamSessionRow({ session: s, exam, notify, onGraded }) {
                   className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold"
                   style={{ background: open ? '#fef3c7' : '#fff7ed', color: A }}>
             <Star className="h-3 w-3" /> {isGraded ? 'Modifier' : 'Corriger'}
+          </button>
+          <button onClick={handleDelete} disabled={deleting}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-50"
+                  style={{ background: '#fef2f2', color: '#dc2626' }}>
+            <Trash2 className="h-3 w-3" /> {deleting ? 'Suppression…' : 'Supprimer'}
           </button>
         </div>
       </div>
