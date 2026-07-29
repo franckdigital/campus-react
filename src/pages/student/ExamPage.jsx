@@ -1361,6 +1361,10 @@ export default function ExamPage() {
       // tick — time spent on a break is never deducted anyway — and resumes
       // (then locks if it's genuinely already at 0) once the break ends.
       elapsedMsRef.current += 1000;
+      // Persisted separately from the answers/pdfContent mirror below (which
+      // only writes on state changes) so a refresh can restore the *actual*
+      // active working time — see the restore logic in startExam() above.
+      try { localStorage.setItem(`examElapsed_${examId}`, String(elapsedMsRef.current)); } catch { /* storage unavailable/full */ }
       if (breaksUsedRef.current < MAX_BREAKS && elapsedMsRef.current >= (breaksUsedRef.current + 1) * BREAK_INTERVAL_MS) {
         breaksUsedRef.current += 1;
         setBreakState({ index: breaksUsedRef.current, until: Date.now() + BREAK_DURATION_MS });
@@ -1544,13 +1548,22 @@ export default function ExamPage() {
       const startedAtMs = sess?.started_at ? new Date(sess.started_at).getTime() : Date.now();
       const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));
       setTimeLeft(Math.max(0, durationSeconds - elapsedSeconds));
-      // Reseed the break-scheduling refs from the same real elapsed time —
-      // they're plain useRefs (reset to 0 on every remount: reload, tab
-      // discard/restore, a fraud-suspension screen swap), so without this a
-      // break "due" at the 30-minute mark could silently slip past if the
-      // student reloaded partway through, or a break already taken before
-      // the reload could wrongly fire again a fresh 30 minutes later.
-      const elapsedMs = elapsedSeconds * 1000;
+      // Reseed the break-scheduling refs — they're plain useRefs (reset to 0
+      // on every remount: reload, tab discard/restore, a fraud-suspension
+      // screen swap), so without this a break "due" at the 30-minute mark
+      // could silently slip past if the student reloaded partway through, or
+      // a break already taken before the reload could wrongly fire again a
+      // fresh 30 minutes later. Prefer the persisted *active* elapsed time
+      // (see the per-tick write in the countdown effect above) over deriving
+      // it from raw wall-clock time since started_at: the wall-clock delta
+      // also counts every minute spent suspended or on a break, so a student
+      // suspended for a total of 15+ minutes could cross the 30-minute mark
+      // in wall-clock terms while having done barely any actual exam work —
+      // silently marking a break as already "used" that they never got to
+      // take. Falls back to the wall-clock estimate only when nothing was
+      // ever persisted (a genuinely fresh first start).
+      const persistedElapsedMs = parseInt(localStorage.getItem(`examElapsed_${examId}`), 10);
+      const elapsedMs = Number.isFinite(persistedElapsedMs) ? persistedElapsedMs : elapsedSeconds * 1000;
       elapsedMsRef.current = elapsedMs;
       breaksUsedRef.current = Math.min(MAX_BREAKS, Math.floor(elapsedMs / BREAK_INTERVAL_MS));
 
@@ -1648,7 +1661,10 @@ export default function ExamPage() {
       }
       setResult(res);
       if (document.fullscreenElement) document.exitFullscreen?.();
-      try { localStorage.removeItem(`examProgress_${examId}`); } catch {}
+      try {
+        localStorage.removeItem(`examProgress_${examId}`);
+        localStorage.removeItem(`examElapsed_${examId}`);
+      } catch {}
       setPhase('submitted');
     } catch {
       if (!auto) setError('Erreur lors de la soumission.');
@@ -1847,7 +1863,7 @@ export default function ExamPage() {
             <button onClick={() => setContentTab('pdf')}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all"
                     style={effectiveTab === 'pdf' ? { background: '#7c3aed', color: 'white' } : { background: 'white', color: '#64748b', boxShadow: '0 1px 4px #0001' }}>
-              <FileText className="h-3.5 w-3.5" /> Réponse PDF
+              <FileText className="h-3.5 w-3.5" /> Répondez aux questions du sujet
             </button>
           </div>
         )}
