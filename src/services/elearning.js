@@ -247,6 +247,7 @@ export const elearningService = {
   getExamRanking: (examId) => api.get(`/elearning/exams/${examId}/ranking/`),
   getMyExamSession: (examId) => api.get(`/elearning/exams/${examId}/my-session/`),
   getExamById: (id) => api.get(`/elearning/exams/${id}/`),
+  deleteExamSession: (sessionId) => api.delete(`/elearning/exam-sessions/${sessionId}/`),
   gradeExamSession: (sessionId, data) => api.post(`/elearning/exam-sessions/${sessionId}/grade/`, data),
   gradeExamSessionWithFile: (sessionId, formData) => api.upload(`/elearning/exam-sessions/${sessionId}/grade/`, formData),
   submitExamFile: (sessionId, formData) => api.upload(`/elearning/exam-sessions/${sessionId}/submit-file/`, formData),
