@@ -1896,13 +1896,13 @@ export default function ExamPage() {
         {hasQuestions && hasPdfAnswer && (
           <div className="flex gap-2 flex-shrink-0">
             <button onClick={() => setContentTab('questions')}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all"
-                    style={effectiveTab === 'questions' ? { background: '#6366f1', color: 'white' } : { background: 'white', color: '#64748b', boxShadow: '0 1px 4px #0001' }}>
-              <BookOpen className="h-3.5 w-3.5" /> Questions ({answered}/{questions.length})
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${effectiveTab === 'questions' ? '' : 'animate-pulse'}`}
+                    style={effectiveTab === 'questions' ? { background: '#6366f1', color: 'white' } : { background: '#fee2e2', color: '#b91c1c', boxShadow: '0 1px 4px #0001' }}>
+              <BookOpen className="h-3.5 w-3.5" /> Répondez aux QCM ({answered}/{questions.length})
             </button>
             <button onClick={() => setContentTab('pdf')}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all"
-                    style={effectiveTab === 'pdf' ? { background: '#7c3aed', color: 'white' } : { background: 'white', color: '#64748b', boxShadow: '0 1px 4px #0001' }}>
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${effectiveTab === 'pdf' ? '' : 'animate-pulse'}`}
+                    style={effectiveTab === 'pdf' ? { background: '#7c3aed', color: 'white' } : { background: '#fee2e2', color: '#b91c1c', boxShadow: '0 1px 4px #0001' }}>
               <FileText className="h-3.5 w-3.5" /> Répondez aux questions du sujet
             </button>
           </div>
