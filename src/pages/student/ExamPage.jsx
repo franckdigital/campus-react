@@ -41,11 +41,24 @@ const FRAUD_SUSPEND_MIN = 5;
 
 // Mandatory-but-skippable bathroom breaks: every BREAK_INTERVAL_MS of actual
 // exam time (suspensions/breaks themselves don't count toward this clock),
-// up to MAX_BREAKS times, the exam auto-pauses for BREAK_DURATION_MS with a
-// modal explaining why — time spent on a break is never deducted.
+// the exam auto-pauses for BREAK_DURATION_MS with a modal explaining why —
+// time spent on a break is never deducted. How many breaks an exam is
+// entitled to scales with its own duration (see maxBreaksFor below) rather
+// than a flat count — a 1h exam only ever reaches one 30-minute mark with
+// meaningful time left afterward, a 1h30 exam reaches two, etc.
 const BREAK_INTERVAL_MS = 30 * 60 * 1000;
 const BREAK_DURATION_MS = 3 * 60 * 1000;
-const MAX_BREAKS        = 3;
+
+// Only counts a 30-minute mark as an earned break if there's still more than
+// zero exam time left after it — an exam whose duration is an exact
+// multiple of 30 doesn't get a break AT its own final minute, since there'd
+// be nothing left to actually work on afterward. 60min -> 1, 90min -> 2,
+// 45min -> 1, 30min or less -> 0.
+function maxBreaksFor(durationMinutes) {
+  return Math.max(0, Math.ceil((durationMinutes || 60) / 30) - 1);
+}
+
+const BREAK_ORDINALS = ['première', 'seconde', 'troisième', 'quatrième', 'cinquième'];
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 function fmtTime(secs) {
@@ -990,10 +1003,11 @@ function FraudSuspensionModal({ reason, until, onExpire }) {
 
 /* ── BATHROOM BREAK MODAL ────────────────────────────────────────────────── */
 // Auto-triggered every BREAK_INTERVAL_MS of actual exam time, up to
-// MAX_BREAKS times — the countdown/webcam/anti-cheat are all paused for the
-// duration (see breakState wiring above). Skippable early via "Reprendre
-// l'examen" for a student who doesn't need the full 3 minutes.
-function BreakModal({ index, until, onResume }) {
+// maxBreaksFor(exam.duration_minutes) times — the countdown/webcam/anti-cheat
+// are all paused for the duration (see breakState wiring above). Skippable
+// early via "Reprendre l'examen" for a student who doesn't need the full 3
+// minutes.
+function BreakModal({ index, total, until, onResume }) {
   const [remaining, setRemaining] = useState(0);
 
   useEffect(() => {
@@ -1019,7 +1033,7 @@ function BreakModal({ index, until, onResume }) {
           <Clock className="h-10 w-10" style={{ color: '#2563eb' }} />
         </div>
         <div>
-          <h1 className="text-xl font-black" style={{ color: '#1e293b' }}>Pause autorisée ({index}/{MAX_BREAKS})</h1>
+          <h1 className="text-xl font-black" style={{ color: '#1e293b' }}>Pause autorisée ({index}/{total})</h1>
           <p className="mt-2 text-sm leading-relaxed" style={{ color: '#64748b' }}>
             Vous pouvez vous absenter quelques instants (vous soulager, vous étirer...). La surveillance et le
             chronomètre de l'examen sont mis en pause — ce temps n'est pas décompté.
@@ -1308,6 +1322,23 @@ export default function ExamPage() {
   // from both the exam countdown and the elapsed-time clock that schedules
   // the next break (see the countdown effect below).
   const [breakState, setBreakState] = useState(null);
+  // Confirmation banner shown right after a break ends (timer ran out, or
+  // the student clicked "Reprendre l'examen") — "vous avez bénéficié de la
+  // première/deuxième... pause", auto-clears after a few seconds since it's
+  // a one-off confirmation, not an ongoing warning like the security flags.
+  const [breakDoneMsg, setBreakDoneMsg] = useState('');
+  const breakDoneTimer = useRef(null);
+  const handleBreakResume = useCallback(() => {
+    setBreakState(prev => {
+      if (prev) {
+        const ordinal = BREAK_ORDINALS[prev.index - 1] || `${prev.index}e`;
+        setBreakDoneMsg(`Vous avez bénéficié de la ${ordinal} pause de 30 minutes.`);
+        clearTimeout(breakDoneTimer.current);
+        breakDoneTimer.current = setTimeout(() => setBreakDoneMsg(''), 10000);
+      }
+      return null;
+    });
+  }, []);
   const breaksUsedRef = useRef(0);
   const elapsedMsRef = useRef(0);
   // "Répondre dans le système" section for exams that carry a PDF subject
@@ -1365,7 +1396,8 @@ export default function ExamPage() {
       // only writes on state changes) so a refresh can restore the *actual*
       // active working time — see the restore logic in startExam() above.
       try { localStorage.setItem(`examElapsed_${examId}`, String(elapsedMsRef.current)); } catch { /* storage unavailable/full */ }
-      if (breaksUsedRef.current < MAX_BREAKS && elapsedMsRef.current >= (breaksUsedRef.current + 1) * BREAK_INTERVAL_MS) {
+      const examMaxBreaks = maxBreaksFor(exam?.duration_minutes);
+      if (breaksUsedRef.current < examMaxBreaks && elapsedMsRef.current >= (breaksUsedRef.current + 1) * BREAK_INTERVAL_MS) {
         breaksUsedRef.current += 1;
         setBreakState({ index: breaksUsedRef.current, until: Date.now() + BREAK_DURATION_MS });
         return;
@@ -1380,7 +1412,7 @@ export default function ExamPage() {
       });
     }, 1000);
     return () => clearInterval(t);
-  }, [phase, fraudBlock, breakState]);
+  }, [phase, fraudBlock, breakState, exam, examId]);
 
   // Keep a stable ref to handleSubmit to avoid stale closure in locked effect
   const handleSubmitRef = useRef(null);
@@ -1565,7 +1597,7 @@ export default function ExamPage() {
       const persistedElapsedMs = parseInt(localStorage.getItem(`examElapsed_${examId}`), 10);
       const elapsedMs = Number.isFinite(persistedElapsedMs) ? persistedElapsedMs : elapsedSeconds * 1000;
       elapsedMsRef.current = elapsedMs;
-      breaksUsedRef.current = Math.min(MAX_BREAKS, Math.floor(elapsedMs / BREAK_INTERVAL_MS));
+      breaksUsedRef.current = Math.min(maxBreaksFor(exam?.duration_minutes), Math.floor(elapsedMs / BREAK_INTERVAL_MS));
 
       // Resume an in-progress fraud suspension across the reload too — its
       // `until` timestamp is wall-clock, so simply re-showing the modal
@@ -1753,7 +1785,7 @@ export default function ExamPage() {
         />
       )}
       {breakState && (
-        <BreakModal index={breakState.index} until={breakState.until} onResume={() => setBreakState(null)} />
+        <BreakModal index={breakState.index} total={maxBreaksFor(exam?.duration_minutes)} until={breakState.until} onResume={handleBreakResume} />
       )}
       {quizCalculatorOpen && (
         <CalculatorWidget
@@ -1777,6 +1809,14 @@ export default function ExamPage() {
             <p className="text-sm font-black truncate" style={{ color: '#1e293b' }}>{exam?.title}</p>
             <p className="text-xs" style={{ color: '#94a3b8' }}>{answered}/{questions.length} répondues</p>
           </div>
+
+          {/* Break-just-ended confirmation */}
+          {breakDoneMsg && (
+            <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold order-2"
+                 style={{ background: '#eff6ff', color: '#2563eb' }}>
+              <Clock className="h-3 w-3" /> {breakDoneMsg}
+            </div>
+          )}
 
           {/* Security flags */}
           {flags.slice(-1).map((f, i) => (
