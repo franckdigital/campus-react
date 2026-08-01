@@ -60,7 +60,27 @@ function maxBreaksFor(durationMinutes) {
 
 const BREAK_ORDINALS = ['première', 'seconde', 'troisième', 'quatrième', 'cinquième'];
 
+// Anti-multi-device: interval between two heartbeat pings to the backend
+// while an exam is in progress. Must stay comfortably under the server's
+// DEVICE_LOCK_STALE_SECONDS (60s) so a single slow/dropped request doesn't
+// make another device think this one is gone.
+const HEARTBEAT_INTERVAL_MS = 20_000;
+
 /* ── helpers ─────────────────────────────────────────────────────────────── */
+
+// Identifies this browser tab (not this student) for the "one device at a
+// time" exam lock — sessionStorage keeps it stable across a reload of the
+// same tab, but a new tab/window/device always gets a fresh one.
+function getDeviceToken() {
+  const KEY = 'exam_device_token';
+  let token = sessionStorage.getItem(KEY);
+  if (!token) {
+    token = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    sessionStorage.setItem(KEY, token);
+  }
+  return token;
+}
+
 function fmtTime(secs) {
   const h = Math.floor(secs / 3600);
   const m = Math.floor((secs % 3600) / 60);
@@ -1535,7 +1555,7 @@ export default function ExamPage() {
           .map(q => ({ ...q, choices: [...(q.choices || [])].sort(byOrder) }));
       }
 
-      const sess = await elearningService.startExamSession(examId);
+      const sess = await elearningService.startExamSession(examId, getDeviceToken());
       setSession(sess);
       if (att) { setAttempt(att); setQuestions(qs); }
 
@@ -1616,6 +1636,9 @@ export default function ExamPage() {
       if (status === 403) {
         setAttemptsExhausted(true);
         setError('');
+      } else if (e?.code === 'DEVICE_LOCKED') {
+        setError(e.message || 'Cet examen est déjà ouvert sur un autre appareil.');
+        setPhase('error');
       } else {
         setError(e.message || 'Impossible de démarrer l\'examen.');
       }
@@ -1653,6 +1676,25 @@ export default function ExamPage() {
     window.addEventListener('popstate', trapBack);
     return () => window.removeEventListener('popstate', trapBack);
   }, [phase]);
+
+  // Anti-multi-device: periodic heartbeat while the exam is in progress. If
+  // another device/tab has taken over the lock (this one went quiet for too
+  // long — e.g. laptop sleep), the server starts rejecting our heartbeats;
+  // deliberately does NOT auto-submit here, since the other device may now
+  // be the one genuinely finishing the exam — this tab just backs off.
+  useEffect(() => {
+    if (phase !== 'exam') return;
+    const t = setInterval(() => {
+      elearningService.heartbeatExamSession(examId, getDeviceToken()).catch((e) => {
+        if (e?.code === 'DEVICE_LOCKED') {
+          clearInterval(t);
+          setError(e.message || 'Votre session a été reprise sur un autre appareil.');
+          setPhase('error');
+        }
+      });
+    }, HEARTBEAT_INTERVAL_MS);
+    return () => clearInterval(t);
+  }, [phase, examId]);
 
   // Submit answers — quiz attempt (if any) and/or the PDF "répondre dans le
   // système" section (if the exam carries a subject PDF), together as one
