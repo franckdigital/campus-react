@@ -6,7 +6,7 @@ import {
   Save, ChevronLeft, ChevronRight, Info, Lock, Check, Minus,
   BookOpen, Settings, Play, Eye, GripVertical, CheckSquare, Calendar,
 } from 'lucide-react';
-import { elearningService, academicService } from '../../services';
+import { elearningService, academicService, studentsService } from '../../services';
 import { useApi } from '../../hooks/useApi';
 import { IconBtn, Pagination } from '../../components/ui/PageHeader';
 import { useConfirm } from '../../components/ConfirmDialog';
@@ -124,6 +124,98 @@ function ClassPicker({ classesList = [], value = [], onChange, multiple = false 
                       style={{ color: '#1e293b' }}>
                 {c.name}
                 {isSel && <Check className="h-3.5 w-3.5" style={{ color: C }} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── STUDENT PICKER (server search, multi-select, additive allowlist) ─────── */
+// Unlike ClassPicker, the full student list can't be preloaded client-side
+// (potentially thousands across the school), so this searches the server
+// as the admin types instead of filtering an in-memory array. Selected
+// students are tracked as full {id, name, matricule} objects (not just ids)
+// since there's no preloaded list to look names back up in for the chips —
+// seeded from students_detail when editing an existing exam.
+function StudentPicker({ value = [], details = [], onChange }) {
+  const [query, setQuery] = useState('');
+  const [openList, setOpenList] = useState(false);
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const ref = useRef(null);
+  const debounceRef = useRef(null);
+
+  useEffect(() => {
+    function onDocClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpenList(false); }
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    if (!query.trim()) { setResults([]); return; }
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const res = await studentsService.getAll({ search: query, is_active: true, page_size: 10 });
+        setResults(res?.results || (Array.isArray(res) ? res : []));
+      } catch { setResults([]); }
+      finally { setLoading(false); }
+    }, 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [query]);
+
+  function add(student) {
+    if (value.includes(student.id)) return;
+    onChange([...value, student.id], [...details, { id: student.id, name: student.full_name, matricule: student.matricule }]);
+    setQuery('');
+    setResults([]);
+  }
+  function remove(id) {
+    onChange(value.filter(v => v !== id), details.filter(d => d.id !== id));
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      {details.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {details.map(s => (
+            <span key={s.id} className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg"
+                  style={{ background: '#dbeafe', color: '#2563eb' }}>
+              {s.name}{s.matricule ? ` (${s.matricule})` : ''}
+              <button type="button" onClick={() => remove(s.id)} className="hover:opacity-70" aria-label={`Retirer ${s.name}`}>
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input
+        value={query}
+        onChange={e => { setQuery(e.target.value); setOpenList(true); }}
+        onFocus={() => setOpenList(true)}
+        placeholder="Rechercher un étudiant par nom ou matricule…"
+        className="w-full px-3 py-2 rounded-xl text-sm border outline-none"
+        style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}
+      />
+      {openList && query.trim() && (
+        <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-xl border bg-white shadow-lg"
+             style={{ borderColor: '#e2e8f0' }}>
+          {loading ? (
+            <p className="px-3 py-2 text-xs" style={{ color: '#94a3b8' }}>Recherche…</p>
+          ) : results.length === 0 ? (
+            <p className="px-3 py-2 text-xs" style={{ color: '#94a3b8' }}>Aucun étudiant trouvé</p>
+          ) : results.map(s => {
+            const isSel = value.includes(s.id);
+            return (
+              <button type="button" key={s.id} onClick={() => !isSel && add(s)}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-slate-50"
+                      style={{ color: '#1e293b' }} disabled={isSel}>
+                <span>{s.full_name}{s.matricule ? <span className="ml-1.5 text-xs" style={{ color: '#94a3b8' }}>({s.matricule})</span> : ''}</span>
+                {isSel && <Check className="h-3.5 w-3.5" style={{ color: '#2563eb' }} />}
               </button>
             );
           })}
@@ -441,6 +533,7 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
 
   const blank = {
     title: '', description: '', class_objs: [], subject: '', teacher: '',
+    students: [],
     is_global: false, site: '',
     exam_type: 'FINAL', duration_minutes: 60, start_date: '', end_date: '',
     max_attempts: 1, pass_score_percent: 50, coefficient: 1,
@@ -451,6 +544,10 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
   };
   const [form, setForm] = useState(blank);
   const F = (k) => (v) => setForm(p => ({ ...p, [k]: v }));
+  // Display metadata ({id, name, matricule}) for the chips in StudentPicker
+  // — kept out of `form` since it's not part of the save payload, just what
+  // there's no preloaded list to look names back up in.
+  const [studentDetails, setStudentDetails] = useState([]);
 
   // Load existing exam data
   useEffect(() => {
@@ -459,6 +556,7 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
       setForm({
         ...blank, ...editing,
         class_objs: editing.class_obj ? [String(editing.class_obj)] : [],
+        students:   (editing.students || []).map(String),
         subject:    String(editing.subject || ''),
         teacher:    String(editing.teacher || ''),
         is_global:  !!editing.is_global,
@@ -497,12 +595,14 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
       }
       setExamPdf(null);
       setPdfDuration(editing.pdf_extra_duration || 0);
+      setStudentDetails(editing.students_detail || []);
     } else {
       setForm(blank);
       setQuestions([]);
       loadedQuestionsRef.current = '[]';
       setExamPdf(null);
       setPdfDuration(0);
+      setStudentDetails([]);
     }
     setTab('info');
   }, [open, editing?.id]);
@@ -833,6 +933,17 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
                   </div>
                 </div>
               )}
+
+              <div>
+                <Lbl>Étudiants spécifiques (optionnel)</Lbl>
+                <StudentPicker value={form.students} details={studentDetails}
+                               onChange={(ids, det) => { F('students')(ids); setStudentDetails(det); }} />
+                <p className="text-[10px] mt-1" style={{ color: '#94a3b8' }}>
+                  S'ajoutent à la classe ciblée ci-dessus, sans la remplacer — utile pour un rattrapage,
+                  un étudiant d'une autre classe, ou un cas particulier.
+                </p>
+              </div>
+
               {showTeacherField && (
                 <div>
                   <Lbl>Enseignant</Lbl>
