@@ -102,7 +102,9 @@ class ApiService {
           if (errors) error = errors;
         }
       }
-      throw new Error(error);
+      const err = new Error(error);
+      if (data?.code) err.code = data.code;
+      throw err;
     }
     
     return data;
