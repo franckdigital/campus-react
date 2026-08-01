@@ -533,7 +533,7 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
 
   const blank = {
     title: '', description: '', class_objs: [], subject: '', teacher: '',
-    students: [],
+    students: [], restrict_to_selected_students: false,
     is_global: false, site: '',
     exam_type: 'FINAL', duration_minutes: 60, start_date: '', end_date: '',
     max_attempts: 1, pass_score_percent: 50, coefficient: 1,
@@ -939,9 +939,27 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
                 <StudentPicker value={form.students} details={studentDetails}
                                onChange={(ids, det) => { F('students')(ids); setStudentDetails(det); }} />
                 <p className="text-[10px] mt-1" style={{ color: '#94a3b8' }}>
-                  S'ajoutent à la classe ciblée ci-dessus, sans la remplacer — utile pour un rattrapage,
-                  un étudiant d'une autre classe, ou un cas particulier.
+                  {form.restrict_to_selected_students
+                    ? 'Seuls ces étudiants pourront voir et composer cet examen — le reste de la classe ne le verra pas.'
+                    : 'S\'ajoutent à la classe ciblée ci-dessus, sans la remplacer — utile pour un rattrapage, un étudiant d\'une autre classe, ou un cas particulier.'}
                 </p>
+                {!form.is_global && (
+                  <label className="flex items-center gap-3 p-3 mt-2 rounded-xl cursor-pointer"
+                         style={{ background: form.restrict_to_selected_students ? '#fff7ed' : '#f8fafc', border: `1.5px solid ${form.restrict_to_selected_students ? '#fdba74' : '#e2e8f0'}` }}
+                         onClick={() => F('restrict_to_selected_students')(!form.restrict_to_selected_students)}>
+                    <div style={{ width: 20, height: 20, borderRadius: 6, border: `2px solid ${form.restrict_to_selected_students ? '#ea580c' : '#cbd5e1'}`, background: form.restrict_to_selected_students ? '#ea580c' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {form.restrict_to_selected_students && <CheckSquare className="h-3 w-3 text-white" />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold" style={{ color: form.restrict_to_selected_students ? '#9a3412' : '#374151' }}>
+                        Réserver exclusivement à ces étudiants
+                      </p>
+                      <p className="text-xs" style={{ color: '#94a3b8' }}>
+                        Le reste de la classe sélectionnée ci-dessus n'aura pas accès à cet examen.
+                      </p>
+                    </div>
+                  </label>
+                )}
               </div>
 
               {showTeacherField && (
