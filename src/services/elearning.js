@@ -246,6 +246,10 @@ export const elearningService = {
   logExamEvent: (examId, eventType, details = {}) => api.post(`/elearning/exams/${examId}/log-event/`, { event_type: eventType, details }),
   getExamSessions: (examId) => api.get(`/elearning/exams/${examId}/sessions/`),
   getExamRanking: (examId) => api.get(`/elearning/exams/${examId}/ranking/`),
+  getExamRankingOverview: (params = {}) => {
+    const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')).toString();
+    return api.get(`/elearning/exams/ranking-overview/${q ? `?${q}` : ''}`);
+  },
   getMyExamSession: (examId) => api.get(`/elearning/exams/${examId}/my-session/`),
   getExamById: (id) => api.get(`/elearning/exams/${id}/`),
   deleteExamSession: (sessionId) => api.delete(`/elearning/exam-sessions/${sessionId}/`),

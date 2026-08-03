@@ -9,6 +9,8 @@ import {
   Camera, ShieldAlert, Calendar, XCircle, MessageCircle, Trash2,
 } from 'lucide-react';
 import { elearningService } from '../../services/elearning';
+import { academicService } from '../../services';
+import { useSite } from '../../contexts/SiteContext';
 import { useApi } from '../../hooks/useApi';
 import { useConfirm } from '../../components/ConfirmDialog';
 
@@ -1523,12 +1525,110 @@ function ExamCorrectionList({ notify }) {
   );
 }
 
+// ─── Classement (examens sécurisés) ────────────────────────────────────────────
+// Un rang par examen (jamais mélangé entre matières — comparer une note de
+// maths à une note d'histoire n'aurait pas de sens) ; les filtres filière/
+// classe/site servent juste à parcourir plusieurs classements d'examens sans
+// devoir ouvrir chaque examen un par un. Portée automatiquement scopée par
+// SecureExamViewSet.get_queryset côté backend : un enseignant ne voit que ses
+// propres examens, un admin voit toute l'école (le "classement général").
+function RankingGroupCard({ group }) {
+  const [open, setOpen] = useState(true);
+  const subtitle = [group.subject_name, group.class_name, group.site_name].filter(Boolean).join(' — ');
+  return (
+    <div className="rounded-2xl border overflow-hidden" style={{ borderColor: '#fde68a' }}>
+      <button onClick={() => setOpen(o => !o)}
+              className="w-full flex items-center justify-between gap-3 p-4 text-left"
+              style={{ background: '#fffbeb' }}>
+        <div className="min-w-0">
+          <p className="text-sm font-black truncate" style={{ color: '#92400e' }}>{group.exam_title}</p>
+          {subtitle && <p className="text-xs mt-0.5" style={{ color: '#b45309' }}>{subtitle}</p>}
+        </div>
+        {open ? <ChevronUp className="h-4 w-4 flex-shrink-0" style={{ color: '#b45309' }} />
+              : <ChevronDown className="h-4 w-4 flex-shrink-0" style={{ color: '#b45309' }} />}
+      </button>
+      {open && (
+        <div className="p-4 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[10px] font-bold uppercase tracking-wide" style={{ color: '#94a3b8' }}>
+                <th className="pb-2 pr-3">Rang</th>
+                <th className="pb-2 pr-3">Nom</th>
+                <th className="pb-2 pr-3">Prénoms</th>
+                <th className="pb-2 pr-3">Matière</th>
+                <th className="pb-2">Mention</th>
+              </tr>
+            </thead>
+            <tbody>
+              {group.results.map(r => (
+                <tr key={r.rank} style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <td className="py-2 pr-3 font-black" style={{ color: '#d97706' }}>{r.rank}</td>
+                  <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b' }}>{r.last_name}</td>
+                  <td className="py-2 pr-3" style={{ color: '#374151' }}>{r.first_name}</td>
+                  <td className="py-2 pr-3" style={{ color: '#64748b' }}>{group.subject_name || '—'}</td>
+                  <td className="py-2 font-semibold" style={{ color: '#374151' }}>{r.mention}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExamRankingOverview() {
+  const [filiere, setFiliere] = useState('');
+  const [classObj, setClassObj] = useState('');
+  const [site, setSite] = useState('');
+  const { sites } = useSite();
+  const { data: programsData } = useApi(() => academicService.getPrograms({ page_size: 200, is_active: true }), [], true);
+  const { data: classesData } = useApi(() => academicService.getClasses({ page_size: 500, is_active: true }), [], true);
+  const programs = programsData?.results ?? (Array.isArray(programsData) ? programsData : []);
+  const classes = classesData?.results ?? (Array.isArray(classesData) ? classesData : []);
+
+  const { data, loading } = useApi(
+    () => elearningService.getExamRankingOverview({ filiere, class_obj: classObj, site }),
+    [filiere, classObj, site], true
+  );
+  const groups = data?.groups || [];
+
+  const selectStyle = "px-3 py-2 rounded-xl text-sm border outline-none";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        <select value={filiere} onChange={e => setFiliere(e.target.value)}
+                className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
+          <option value="">Toutes les filières</option>
+          {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <select value={classObj} onChange={e => setClassObj(e.target.value)}
+                className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
+          <option value="">Toutes les classes</option>
+          {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select value={site} onChange={e => setSite(e.target.value)}
+                className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
+          <option value="">Tous les sites</option>
+          {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      </div>
+      {loading ? <Spinner />
+        : groups.length === 0
+          ? <Empty icon={Trophy} text="Aucun classement disponible" sub="Aucun examen soumis et corrigé ne correspond à ces filtres." color={A} />
+          : <div className="space-y-3">{groups.map(g => <RankingGroupCard key={g.exam_id} group={g} />)}</div>}
+    </div>
+  );
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 const TABS = [
   { id: 'assignments', label: 'Devoirs & Exercices', icon: ClipboardList, color: C },
   { id: 'quiz',        label: 'Quiz & Évaluations',  icon: ClipboardCheck, color: P },
   { id: 'exams',       label: 'Examens sécurisés',   icon: Shield,         color: A },
+  { id: 'ranking',     label: 'Classement',          icon: Trophy,         color: A },
 ];
 
 export default function CorrectionHub({ notify }) {
@@ -1557,6 +1657,7 @@ export default function CorrectionHub({ notify }) {
       {tab === 'assignments' && <AssignmentsCorrectionList notify={notify} />}
       {tab === 'quiz'        && <QuizCorrectionList        notify={notify} />}
       {tab === 'exams'       && <ExamCorrectionList        notify={notify} />}
+      {tab === 'ranking'     && <ExamRankingOverview />}
     </div>
   );
 }
