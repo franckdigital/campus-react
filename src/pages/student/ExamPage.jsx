@@ -18,6 +18,10 @@ import { sanitizeRichText, stripHtml } from '../../utils/richText';
 
 /* ── constants ───────────────────────────────────────────────────────────── */
 const LOG_COOLDOWN      = 3000;
+// See useAntiCheat's onBlur/onVis — how long after pressing down on the PDF
+// subject <iframe> a resulting blur/visibilitychange is still treated as a
+// side effect of that click rather than a genuine tab/app switch.
+const PDF_INTERACTION_GRACE_MS = 2000;
 const WEBCAM_INTERVAL   = 30000;
 const DETECT_INTERVAL   = 3000;   // local TF.js phone/face detection — cheap, so tighter than the snapshot upload
 // Cumulative phone-detection ticks across the whole exam before suspending —
@@ -107,7 +111,7 @@ const QTYPE_META = {
 };
 
 /* ── Anti-cheat hook ─────────────────────────────────────────────────────── */
-function useAntiCheat({ examId, enabled, onFlag, fullscreenEl, onFraudBlock }) {
+function useAntiCheat({ examId, enabled, onFlag, fullscreenEl, onFraudBlock, pdfInteractionRef }) {
   const lastLog  = useRef({});
   const tabCount = useRef(0);
   const fsExitCount = useRef(0);
@@ -159,6 +163,19 @@ function useAntiCheat({ examId, enabled, onFlag, fullscreenEl, onFraudBlock }) {
 
   useEffect(() => {
     if (!enabled) return;
+    // True right after the student pressed down on the PDF subject <iframe>
+    // itself (see pdfInteractionRef wiring below) — covers the false
+    // positive neither the activeElement check below nor a plain document-
+    // hidden check can: the browser's native PDF viewer runs its own
+    // toolbar/keyboard/context-menu handling in an isolated context that
+    // never reaches this page's listeners, so clicking it (zoom, print,
+    // "open in new tab"...) can flip document.hidden or steal window focus
+    // without the student ever genuinely leaving this tab. Scoped to a short
+    // window after the actual mousedown — unlike gating detection on
+    // "the PDF tab is currently selected", which would leave a PDF-only exam
+    // (no questions tab to ever switch back to) with tab-switch detection
+    // permanently off for its whole duration.
+    const recentlyInPdf = () => Date.now() - (pdfInteractionRef?.current || 0) < PDF_INTERACTION_GRACE_MS;
     const onBlur   = () => {
       // Clicking inside the in-page PDF subject <iframe> to scroll/select
       // text moves focus into that frame and fires `blur` on the parent
@@ -168,6 +185,7 @@ function useAntiCheat({ examId, enabled, onFlag, fullscreenEl, onFraudBlock }) {
       // only that case), so this is the reliable way to tell the two
       // apart without also missing a genuine tab/app switch.
       if (document.activeElement?.tagName === 'IFRAME') return;
+      if (recentlyInPdf()) return;
       registerTabSwitch('Window lost focus');
     };
     const onVis    = () => {
@@ -177,6 +195,7 @@ function useAntiCheat({ examId, enabled, onFlag, fullscreenEl, onFraudBlock }) {
       // toolbar/zoom controls — can flip document.hidden on some browsers
       // without the student ever actually leaving this tab.
       if (document.activeElement?.tagName === 'IFRAME') return;
+      if (recentlyInPdf()) return;
       registerTabSwitch(`#${tabCount.current + 1}`);
     };
     const onFsChange = () => {
@@ -224,7 +243,7 @@ function useAntiCheat({ examId, enabled, onFlag, fullscreenEl, onFraudBlock }) {
       document.removeEventListener('keydown', blockKeys);
       document.removeEventListener('contextmenu', blockCtx);
     };
-  }, [enabled, logEvent, registerTabSwitch, registerFullscreenExit, fullscreenEl]);
+  }, [enabled, logEvent, registerTabSwitch, registerFullscreenExit, fullscreenEl, pdfInteractionRef]);
 
   return { logEvent };
 }
@@ -1402,6 +1421,9 @@ export default function ExamPage() {
   const [pdfError, setPdfError] = useState('');
   const [contentTab, setContentTab] = useState('questions'); // 'questions' | 'pdf' — only relevant when both a quiz and a PDF are present
   const fullscreenEl = useRef(null);
+  // Timestamp of the last mousedown directly on the PDF subject <iframe> —
+  // see useAntiCheat's onBlur/onVis and PDF_INTERACTION_GRACE_MS.
+  const pdfInteractionRef = useRef(0);
 
   // Load exam info
   useEffect(() => {
@@ -1552,21 +1574,16 @@ export default function ExamPage() {
     // actually suspect is left to the teacher's own judgment (e.g. via the
     // session's later review), not an automatic block.
     //
-    // Also suppressed whenever the PDF subject panel (contentTab === 'pdf')
-    // is the one showing — a targeted activeElement-tagName check here
-    // wasn't enough (see onBlur/onVis in useAntiCheat): the browser's native
-    // PDF viewer inside the iframe has its own toolbar (zoom, print, "open
-    // in new tab"...) and its own keyboard/context-menu handling that never
-    // reaches this page's listeners at all, so any interaction with it can
-    // still flip document.hidden or steal window focus in ways no DOM signal
-    // here can reliably tell apart from a genuine tab switch. copy/paste and
-    // keyboard-shortcut blocking were already no-ops for content inside that
-    // iframe for the same reason, so disabling the whole hook here loses no
-    // real protection — it only stops the false positives.
-    enabled: phase === 'exam' && !breakState && contentTab !== 'pdf',
+    // NOT suppressed just because the PDF subject panel (contentTab==='pdf')
+    // is showing — a PDF-only exam never leaves that tab, which would leave
+    // tab-switch/copy-paste detection off for its *entire* duration. Instead
+    // pdfInteractionRef (below) narrows the exemption to a short window
+    // right after actually clicking into the PDF iframe — see onBlur/onVis.
+    enabled: phase === 'exam' && !breakState,
     onFlag,
     fullscreenEl,
     onFraudBlock: handleFraudBlock,
+    pdfInteractionRef,
   });
 
   // Start exam
@@ -1990,7 +2007,8 @@ export default function ExamPage() {
                 #toolbar=0 its top toolbar — together they let the PDF page
                 itself fill 100% of the pane instead of being squeezed by
                 chrome the student never needs here. */}
-            <iframe src={`${exam.exam_pdf}#toolbar=0&navpanes=0`} title="Sujet de l'examen" className="flex-1 w-full" style={{ border: 'none' }} />
+            <iframe src={`${exam.exam_pdf}#toolbar=0&navpanes=0`} title="Sujet de l'examen" className="flex-1 w-full" style={{ border: 'none' }}
+                    onMouseDown={() => { pdfInteractionRef.current = Date.now(); }} />
           </div>
         )}
 
