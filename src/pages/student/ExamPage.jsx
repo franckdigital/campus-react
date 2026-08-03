@@ -43,23 +43,28 @@ const FRAUD_SUSPEND_MIN = 5;
 // suspend — the 4th total block is what auto-submits the exam outright.
 const FRAUD_AUTO_SUBMIT_THRESHOLD = 4;
 
-// Mandatory-but-skippable bathroom breaks: every BREAK_INTERVAL_MS of actual
+// Mandatory-but-skippable bathroom breaks: every break interval of actual
 // exam time (suspensions/breaks themselves don't count toward this clock),
 // the exam auto-pauses for BREAK_DURATION_MS with a modal explaining why —
 // time spent on a break is never deducted. How many breaks an exam is
 // entitled to scales with its own duration (see maxBreaksFor below) rather
 // than a flat count — a 1h exam only ever reaches one 30-minute mark with
 // meaningful time left afterward, a 1h30 exam reaches two, etc.
+// Both the interval (default 30min) and the duration below are admin-
+// configurable per exam (SecureExam.break_interval_minutes/
+// break_duration_minutes) — e.g. to demo/test the break flow on a short
+// exam without waiting a real 30 minutes for one to trigger.
 const BREAK_INTERVAL_MS = 30 * 60 * 1000;
 const BREAK_DURATION_MS = 3 * 60 * 1000;
 
-// Only counts a 30-minute mark as an earned break if there's still more than
+// Only counts an interval mark as an earned break if there's still more than
 // zero exam time left after it — an exam whose duration is an exact
-// multiple of 30 doesn't get a break AT its own final minute, since there'd
-// be nothing left to actually work on afterward. 60min -> 1, 90min -> 2,
-// 45min -> 1, 30min or less -> 0.
-function maxBreaksFor(durationMinutes) {
-  return Math.max(0, Math.ceil((durationMinutes || 60) / 30) - 1);
+// multiple of the interval doesn't get a break AT its own final minute,
+// since there'd be nothing left to actually work on afterward.
+// intervalMinutes defaults to 30 for exams predating the per-exam setting.
+function maxBreaksFor(durationMinutes, intervalMinutes) {
+  const interval = intervalMinutes || (BREAK_INTERVAL_MS / 60000);
+  return Math.max(0, Math.ceil((durationMinutes || 60) / interval) - 1);
 }
 
 const BREAK_ORDINALS = ['première', 'seconde', 'troisième', 'quatrième', 'cinquième'];
@@ -1443,8 +1448,9 @@ export default function ExamPage() {
       // only writes on state changes) so a refresh can restore the *actual*
       // active working time — see the restore logic in startExam() above.
       try { localStorage.setItem(`examElapsed_${examId}`, String(elapsedMsRef.current)); } catch { /* storage unavailable/full */ }
-      const examMaxBreaks = maxBreaksFor(exam?.duration_minutes);
-      if (breaksUsedRef.current < examMaxBreaks && elapsedMsRef.current >= (breaksUsedRef.current + 1) * BREAK_INTERVAL_MS) {
+      const examBreakIntervalMs = (exam?.break_interval_minutes || (BREAK_INTERVAL_MS / 60000)) * 60000;
+      const examMaxBreaks = maxBreaksFor(exam?.duration_minutes, exam?.break_interval_minutes);
+      if (breaksUsedRef.current < examMaxBreaks && elapsedMsRef.current >= (breaksUsedRef.current + 1) * examBreakIntervalMs) {
         breaksUsedRef.current += 1;
         // Admin-configurable per exam (SecureExam.break_duration_minutes) —
         // only the pause's length, not how often it's earned (fixed at
@@ -1671,7 +1677,10 @@ export default function ExamPage() {
       const persistedElapsedMs = parseInt(localStorage.getItem(`examElapsed_${examId}`), 10);
       const elapsedMs = Number.isFinite(persistedElapsedMs) ? persistedElapsedMs : elapsedSeconds * 1000;
       elapsedMsRef.current = elapsedMs;
-      breaksUsedRef.current = Math.min(maxBreaksFor(exam?.duration_minutes), Math.floor(elapsedMs / BREAK_INTERVAL_MS));
+      breaksUsedRef.current = Math.min(
+        maxBreaksFor(exam?.duration_minutes, exam?.break_interval_minutes),
+        Math.floor(elapsedMs / ((exam?.break_interval_minutes || (BREAK_INTERVAL_MS / 60000)) * 60000))
+      );
 
       // Resume an in-progress fraud suspension across the reload too — its
       // `until` timestamp is wall-clock, so simply re-showing the modal
@@ -1882,7 +1891,7 @@ export default function ExamPage() {
         />
       )}
       {breakState && (
-        <BreakModal index={breakState.index} total={maxBreaksFor(exam?.duration_minutes)} until={breakState.until} onResume={handleBreakResume} />
+        <BreakModal index={breakState.index} total={maxBreaksFor(exam?.duration_minutes, exam?.break_interval_minutes)} until={breakState.until} onResume={handleBreakResume} />
       )}
       {quizCalculatorOpen && (
         <CalculatorWidget
