@@ -1419,7 +1419,13 @@ export default function ExamPage() {
       const examMaxBreaks = maxBreaksFor(exam?.duration_minutes);
       if (breaksUsedRef.current < examMaxBreaks && elapsedMsRef.current >= (breaksUsedRef.current + 1) * BREAK_INTERVAL_MS) {
         breaksUsedRef.current += 1;
-        setBreakState({ index: breaksUsedRef.current, until: Date.now() + BREAK_DURATION_MS });
+        // Admin-configurable per exam (SecureExam.break_duration_minutes) —
+        // only the pause's length, not how often it's earned (fixed at
+        // BREAK_INTERVAL_MS). Falls back to the old hard-coded 3 minutes for
+        // exams predating this setting (shouldn't happen post-migration, but
+        // exam could still be null/loading here on a very fast first tick).
+        const durationMs = (exam?.break_duration_minutes ?? (BREAK_DURATION_MS / 60000)) * 60000;
+        setBreakState({ index: breaksUsedRef.current, until: Date.now() + durationMs });
         return;
       }
       setTimeLeft(l => {
