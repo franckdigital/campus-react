@@ -13,6 +13,8 @@ import { academicService } from '../../services';
 import { useSite } from '../../contexts/SiteContext';
 import { useApi } from '../../hooks/useApi';
 import { useConfirm } from '../../components/ConfirmDialog';
+import { ExportMenu } from '../../components/ui/PageHeader';
+import { exportToExcel, exportToPDF } from '../../utils/export';
 
 const P = '#7c3aed';
 const C = '#db2777';
@@ -1581,23 +1583,59 @@ function ExamRankingOverview() {
   const [filiere, setFiliere] = useState('');
   const [classObj, setClassObj] = useState('');
   const [site, setSite] = useState('');
+  const [subject, setSubject] = useState('');
   const { sites } = useSite();
   const { data: programsData } = useApi(() => academicService.getPrograms({ page_size: 200, is_active: true }), [], true);
   const { data: classesData } = useApi(() => academicService.getClasses({ page_size: 500, is_active: true }), [], true);
+  const { data: subjectsData } = useApi(() => academicService.getSubjects({ page_size: 200, is_active: true }), [], true);
   const programs = programsData?.results ?? (Array.isArray(programsData) ? programsData : []);
   const classes = classesData?.results ?? (Array.isArray(classesData) ? classesData : []);
+  const subjects = subjectsData?.results ?? (Array.isArray(subjectsData) ? subjectsData : []);
 
   const { data, loading } = useApi(
-    () => elearningService.getExamRankingOverview({ filiere, class_obj: classObj, site }),
-    [filiere, classObj, site], true
+    () => elearningService.getExamRankingOverview({ filiere, class_obj: classObj, site, subject }),
+    [filiere, classObj, site, subject], true
   );
   const groups = data?.groups || [];
+
+  // Exports whatever is currently visible (i.e. respects the filiere/classe/
+  // matière/site filters above) — every exam group flattened into one file,
+  // an "Examen" column tells rows apart since ranks reset per exam.
+  const handleExportExcel = () => {
+    const rows = groups.flatMap(g => g.results.map(r => ({
+      'Examen': g.exam_title,
+      'Matière': g.subject_name || '',
+      'Classe': g.class_name || '',
+      'Site': g.site_name || '',
+      'Rang': r.rank,
+      'Nom': r.last_name,
+      'Prénoms': r.first_name,
+      'Mention': r.mention,
+    })));
+    exportToExcel(rows,
+      ['Examen', 'Matière', 'Classe', 'Site', 'Rang', 'Nom', 'Prénoms', 'Mention'],
+      `classement-${new Date().toISOString().slice(0, 10)}`, 'Classement');
+  };
+
+  const handleExportPDF = () => {
+    const cols = ['Examen', 'Matière', 'Classe', 'Rang', 'Nom', 'Prénoms', 'Mention'];
+    const rows = groups.flatMap(g => g.results.map(r => [
+      g.exam_title, g.subject_name || '-', g.class_name || '-',
+      String(r.rank), r.last_name, r.first_name, r.mention,
+    ]));
+    exportToPDF('Classement des examens sécurisés', cols, rows,
+      `classement-${new Date().toISOString().slice(0, 10)}`, {
+        'Examens': groups.length,
+        'Étudiants classés': rows.length,
+        'Export du': new Date().toLocaleDateString('fr-FR'),
+      });
+  };
 
   const selectStyle = "px-3 py-2 rounded-xl text-sm border outline-none";
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <select value={filiere} onChange={e => setFiliere(e.target.value)}
                 className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
           <option value="">Toutes les filières</option>
@@ -1608,11 +1646,19 @@ function ExamRankingOverview() {
           <option value="">Toutes les classes</option>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
+        <select value={subject} onChange={e => setSubject(e.target.value)}
+                className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
+          <option value="">Toutes les matières</option>
+          {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
         <select value={site} onChange={e => setSite(e.target.value)}
                 className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
           <option value="">Tous les sites</option>
           {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
+        <div className="ml-auto">
+          <ExportMenu color={A} onExcel={handleExportExcel} onPDF={handleExportPDF} disabled={groups.length === 0} />
+        </div>
       </div>
       {loading ? <Spinner />
         : groups.length === 0
