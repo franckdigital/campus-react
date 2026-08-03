@@ -166,7 +166,13 @@ function useAntiCheat({ examId, enabled, onFlag, fullscreenEl, onFraudBlock }) {
       registerTabSwitch('Window lost focus');
     };
     const onVis    = () => {
-      if (document.hidden) registerTabSwitch(`#${tabCount.current + 1}`);
+      if (!document.hidden) return;
+      // Same false positive as onBlur above (see its comment): interacting
+      // with the in-page PDF subject <iframe> — e.g. clicking its native
+      // toolbar/zoom controls — can flip document.hidden on some browsers
+      // without the student ever actually leaving this tab.
+      if (document.activeElement?.tagName === 'IFRAME') return;
+      registerTabSwitch(`#${tabCount.current + 1}`);
     };
     const onFsChange = () => {
       if (document.fullscreenElement) return;
