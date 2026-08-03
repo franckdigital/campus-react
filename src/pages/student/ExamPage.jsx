@@ -1545,7 +1545,19 @@ export default function ExamPage() {
     // must never trigger an automatic fraud suspension; whether that's
     // actually suspect is left to the teacher's own judgment (e.g. via the
     // session's later review), not an automatic block.
-    enabled: phase === 'exam' && !breakState,
+    //
+    // Also suppressed whenever the PDF subject panel (contentTab === 'pdf')
+    // is the one showing — a targeted activeElement-tagName check here
+    // wasn't enough (see onBlur/onVis in useAntiCheat): the browser's native
+    // PDF viewer inside the iframe has its own toolbar (zoom, print, "open
+    // in new tab"...) and its own keyboard/context-menu handling that never
+    // reaches this page's listeners at all, so any interaction with it can
+    // still flip document.hidden or steal window focus in ways no DOM signal
+    // here can reliably tell apart from a genuine tab switch. copy/paste and
+    // keyboard-shortcut blocking were already no-ops for content inside that
+    // iframe for the same reason, so disabling the whole hook here loses no
+    // real protection — it only stops the false positives.
+    enabled: phase === 'exam' && !breakState && contentTab !== 'pdf',
     onFlag,
     fullscreenEl,
     onFraudBlock: handleFraudBlock,
