@@ -34,10 +34,14 @@ const PHONE_HIT_THRESHOLD = 3;
 const NO_FACE_WARN_MS    = 30_000;
 const NO_FACE_SUSPEND_MS = 60_000;
 // Flat suspension duration for every anti-cheat trigger below: a tab/window
-// switch, a blocked copy/paste, a detected phone, or a prolonged absence
-// from the webcam. Never escalates, never auto-submits the exam — the
-// student just waits it out and resumes exactly where they were.
+// switch, a blocked copy/paste, a detected phone, a prolonged absence from
+// the webcam, or a sustained averted gaze. Each individual block still just
+// pauses/resumes — only crossing FRAUD_AUTO_SUBMIT_THRESHOLD total blocks
+// (see handleFraudBlock) auto-submits the exam instead.
 const FRAUD_SUSPEND_MIN = 5;
+// 1st block suspends (as always) + 3 récidives (repeat offenses) also
+// suspend — the 4th total block is what auto-submits the exam outright.
+const FRAUD_AUTO_SUBMIT_THRESHOLD = 4;
 
 // Mandatory-but-skippable bathroom breaks: every BREAK_INTERVAL_MS of actual
 // exam time (suspensions/breaks themselves don't count toward this clock),
@@ -376,7 +380,20 @@ function WebcamMonitor({ examId, sessionId, enabled, onFlag, onFraudBlock, pause
       cv.toBlob(async blob => {
         if (!blob || !sessionId) return;
         const fd = new FormData(); fd.append('snapshot', blob, `snap_${Date.now()}.jpg`);
-        try { await elearningService.uploadExamSnapshot(sessionId, fd); } catch {}
+        try {
+          const res = await elearningService.uploadExamSnapshot(sessionId, fd);
+          // Gemini's gaze_direction classification of THIS single snapshot —
+          // captures are already WEBCAM_INTERVAL (30s) apart, so one
+          // "looking away" verdict already represents a sustained 30s
+          // window; no extra streak-counting needed (unlike PHONE_HIT_THRESHOLD,
+          // which absorbs occasional misclassifications on a faster local loop).
+          // Skipped while already paused/on a break, same as the local
+          // phone/face checks below, so this never stacks a second
+          // suspension on top of one already showing.
+          if (res?.looking_away && !pausedRef.current && !breakActiveRef.current) {
+            onFraudBlockRef.current?.('Regard détourné de l\'écran détecté pendant plus de 30 secondes.');
+          }
+        } catch {}
       }, 'image/jpeg', 0.85);
     };
     const t = setInterval(capture, WEBCAM_INTERVAL); capture();
@@ -915,12 +932,15 @@ function SubmitModal({ answered, total, onConfirm, onCancel }) {
 }
 
 /* ── LOCKED OVERLAY ──────────────────────────────────────────────────────── */
-// Only ever reached when the exam's own timer runs out — a fraud suspension
-// (see FraudSuspensionModal) never leads here anymore, it just pauses and
-// resumes the exam.
-function LockedOverlay({ submitted, onViewResults, onDashboard, onLogout }) {
-  const title = 'Temps écoulé';
-  const subtitle = 'Le temps imparti est écoulé.';
+// Reached either when the exam's own timer runs out (reason='TIME', the
+// original/default case), or when a student rack up FRAUD_AUTO_SUBMIT_THRESHOLD
+// fraud blocks (reason='FRAUD', see handleFraudBlock) — a single fraud block
+// still just pauses/resumes (FraudSuspensionModal) below that count.
+function LockedOverlay({ submitted, reason = 'TIME', onViewResults, onDashboard, onLogout }) {
+  const title = reason === 'FRAUD' ? 'Examen soumis automatiquement' : 'Temps écoulé';
+  const subtitle = reason === 'FRAUD'
+    ? 'Trop d\'incidents détectés pendant la composition.'
+    : 'Le temps imparti est écoulé.';
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
          style={{ background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(8px)' }}>
@@ -1328,6 +1348,7 @@ export default function ExamPage() {
   const [submitting, setSubmitting] = useState(false);
   const [starting, setStarting] = useState(false);
   const [autoSubmitted, setAutoSubmitted] = useState(false);
+  const [lockReason, setLockReason] = useState('TIME'); // 'TIME' | 'FRAUD' — see LockedOverlay
   const [error, setError]       = useState('');
   const [result, setResult]     = useState(null);
   const [attemptsExhausted, setAttemptsExhausted] = useState(false);
@@ -1419,7 +1440,13 @@ export default function ExamPage() {
       const examMaxBreaks = maxBreaksFor(exam?.duration_minutes);
       if (breaksUsedRef.current < examMaxBreaks && elapsedMsRef.current >= (breaksUsedRef.current + 1) * BREAK_INTERVAL_MS) {
         breaksUsedRef.current += 1;
-        setBreakState({ index: breaksUsedRef.current, until: Date.now() + BREAK_DURATION_MS });
+        // Admin-configurable per exam (SecureExam.break_duration_minutes) —
+        // only the pause's length, not how often it's earned (fixed at
+        // BREAK_INTERVAL_MS). Falls back to the old hard-coded 3 minutes for
+        // exams predating this setting (shouldn't happen post-migration, but
+        // exam could still be null/loading here on a very fast first tick).
+        const durationMs = (exam?.break_duration_minutes ?? (BREAK_DURATION_MS / 60000)) * 60000;
+        setBreakState({ index: breaksUsedRef.current, until: Date.now() + durationMs });
         return;
       }
       setTimeLeft(l => {
@@ -1478,7 +1505,16 @@ export default function ExamPage() {
   // resumes exactly where they were.
   const handleFraudBlock = useCallback((reason) => {
     if (phase !== 'exam' || fraudBlock) return;
-    elearningService.logExamEvent(examId, 'FRAUD_BLOCK', reason).catch(() => {});
+    // Optimistically suspend right away (below) for responsive feedback —
+    // the server round-trip below only ever *escalates* that to an
+    // auto-submit once fraud_block_count crosses the threshold, it never
+    // needs to be awaited to show the suspension itself.
+    elearningService.logExamEvent(examId, 'FRAUD_BLOCK', reason).then(res => {
+      if ((res?.fraud_block_count ?? 0) >= FRAUD_AUTO_SUBMIT_THRESHOLD) {
+        setLockReason('FRAUD');
+        setPhase('locked');
+      }
+    }).catch(() => {});
     // Deduct the penalty once, up front, rather than letting the countdown
     // keep running live during the suspension — the global countdown effect
     // pauses whenever fraudBlock is set, so this is the only place time is
@@ -1788,6 +1824,7 @@ export default function ExamPage() {
     return (
       <LockedOverlay
         submitted={autoSubmitted}
+        reason={lockReason}
         onViewResults={autoSubmitted ? () => setPhase('submitted') : null}
         onDashboard={() => navigate('/student/dashboard/elearning')}
         onLogout={handleLogout}

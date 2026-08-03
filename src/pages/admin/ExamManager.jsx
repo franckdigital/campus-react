@@ -540,6 +540,7 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
     fullscreen_required: true, webcam_required: false,
     block_copy_paste: true, max_tab_switches: 1,
     require_student_photo: false, ai_proctoring: false,
+    break_duration_minutes: 3,
     is_published: false,
   };
   const [form, setForm] = useState(blank);
@@ -1131,6 +1132,16 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
                        style={{ maxWidth: 160 }} />
                 <p className="text-xs mt-1" style={{ color: '#94a3b8' }}>
                   0 = marqué fraudeur immédiatement au premier changement d'onglet
+                </p>
+              </div>
+              <div>
+                <Lbl>Durée de la pause (minutes)</Lbl>
+                <Input type="number" min="0" value={form.break_duration_minutes}
+                       onChange={e => F('break_duration_minutes')(parseInt(e.target.value) || 0)}
+                       style={{ maxWidth: 160 }} />
+                <p className="text-xs mt-1" style={{ color: '#94a3b8' }}>
+                  Une pause "toilettes" facultative est accordée toutes les 30 minutes de composition ;
+                  ce réglage contrôle uniquement sa durée.
                 </p>
               </div>
               <label className="flex items-center gap-3 p-4 rounded-2xl cursor-pointer"
