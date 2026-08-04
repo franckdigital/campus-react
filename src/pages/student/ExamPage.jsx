@@ -255,7 +255,7 @@ function useAntiCheat({ examId, enabled, onFlag, fullscreenEl, onFraudBlock, pdf
 // straight. Deliberately narrow — see examProctoring.js's header comment —
 // so an innocent gesture (a hand on the cheek, scratching an itch,
 // stretching, briefly reaching off-screen) never gets misread as either one.
-function WebcamMonitor({ examId, sessionId, enabled, onFlag, onFraudBlock, paused, breakActive }) {
+function WebcamMonitor({ examId, sessionId, enabled, onFlag, onFraudBlock, paused, breakActive, gazeAwaySeconds }) {
   const videoRef  = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -295,6 +295,11 @@ function WebcamMonitor({ examId, sessionId, enabled, onFlag, onFraudBlock, pause
   const blankStreakRef = useRef(0);
   const blankReportedRef = useRef(false);
   const [looksBlank, setLooksBlank] = useState(false);
+  // Consecutive "looking away" snapshot verdicts needed before suspending —
+  // derived from the admin-configurable gazeAwaySeconds (default 30s) and
+  // WEBCAM_INTERVAL (fixed 30s capture cadence): 1 at the default, more for
+  // a longer tolerance. Any non-"away" snapshot resets the streak.
+  const gazeAwayStreakRef = useRef(0);
   // A distinct counter for "no frame at all" (readyState never reaches
   // HAVE_CURRENT_DATA) — some locked-down/managed browsers (school lab
   // machines in particular) block autoplay outright even for a muted
@@ -412,23 +417,37 @@ function WebcamMonitor({ examId, sessionId, enabled, onFlag, onFraudBlock, pause
         const fd = new FormData(); fd.append('snapshot', blob, `snap_${Date.now()}.jpg`);
         try {
           const res = await elearningService.uploadExamSnapshot(sessionId, fd);
+          if (pausedRef.current || breakActiveRef.current) return;
+          // A second person in frame is unambiguous on its own — unlike a
+          // momentary averted gaze, it doesn't need a sustained streak
+          // before it's worth suspending over.
+          if (res?.multiple_faces) {
+            onFraudBlockRef.current?.('Une autre personne a été détectée à côté ou derrière le candidat.');
+            return;
+          }
           // Gemini's gaze_direction classification of THIS single snapshot —
-          // captures are already WEBCAM_INTERVAL (30s) apart, so one
-          // "looking away" verdict already represents a sustained 30s
-          // window; no extra streak-counting needed (unlike PHONE_HIT_THRESHOLD,
-          // which absorbs occasional misclassifications on a faster local loop).
-          // Skipped while already paused/on a break, same as the local
-          // phone/face checks below, so this never stacks a second
-          // suspension on top of one already showing.
-          if (res?.looking_away && !pausedRef.current && !breakActiveRef.current) {
-            onFraudBlockRef.current?.('Regard détourné de l\'écran détecté pendant plus de 30 secondes.');
+          // captures are already WEBCAM_INTERVAL (30s) apart, so each
+          // "looking away" verdict already represents a sustained ~30s
+          // window. gazeAwaySeconds (admin-configurable per exam, default
+          // 30) sets how many consecutive such verdicts are required —
+          // any non-"away" snapshot resets the streak (a brief glance
+          // shouldn't accumulate toward a suspension hours later).
+          const streakNeeded = Math.max(1, Math.round(((gazeAwaySeconds || 30) * 1000) / WEBCAM_INTERVAL));
+          if (res?.looking_away) {
+            gazeAwayStreakRef.current += 1;
+            if (gazeAwayStreakRef.current >= streakNeeded) {
+              gazeAwayStreakRef.current = 0;
+              onFraudBlockRef.current?.(`Regard détourné de l'écran détecté pendant plus de ${gazeAwaySeconds || 30} secondes.`);
+            }
+          } else {
+            gazeAwayStreakRef.current = 0;
           }
         } catch {}
       }, 'image/jpeg', 0.85);
     };
     const t = setInterval(capture, WEBCAM_INTERVAL); capture();
     return () => clearInterval(t);
-  }, [enabled, active, sessionId, examId]);
+  }, [enabled, active, sessionId, examId, gazeAwaySeconds]);
 
   // Local, in-browser phone/face detection (TensorFlow.js coco-ssd +
   // blazeface) — see examProctoring.js. Runs entirely on-device, tighter
@@ -1961,7 +1980,8 @@ export default function ExamPage() {
           <div className="order-3 sm:order-4">
             <WebcamMonitor examId={examId} sessionId={session?.id} enabled={!!exam?.webcam_required}
                            onFlag={onFlag} onFraudBlock={handleFraudBlock}
-                           paused={!!fraudBlock} breakActive={!!breakState} />
+                           paused={!!fraudBlock} breakActive={!!breakState}
+                           gazeAwaySeconds={exam?.gaze_away_seconds} />
           </div>
 
           {/* Submit */}

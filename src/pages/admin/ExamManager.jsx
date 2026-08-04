@@ -540,7 +540,7 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
     fullscreen_required: true, webcam_required: false,
     block_copy_paste: true, max_tab_switches: 1,
     require_student_photo: false, ai_proctoring: false,
-    break_duration_minutes: 3, break_interval_minutes: 30,
+    break_duration_minutes: 3, break_interval_minutes: 30, gaze_away_seconds: 30,
     is_published: false,
   };
   const [form, setForm] = useState(blank);
@@ -1132,6 +1132,16 @@ function ExamBuilderModal({ open, onClose, editing, classesList = [], subjectsLi
                        style={{ maxWidth: 160 }} />
                 <p className="text-xs mt-1" style={{ color: '#94a3b8' }}>
                   0 = marqué fraudeur immédiatement au premier changement d'onglet
+                </p>
+              </div>
+              <div>
+                <Lbl>Regard détourné toléré (secondes)</Lbl>
+                <Input type="number" min="0" value={form.gaze_away_seconds}
+                       onChange={e => F('gaze_away_seconds')(parseInt(e.target.value) || 0)}
+                       style={{ maxWidth: 160 }} />
+                <p className="text-xs mt-1" style={{ color: '#94a3b8' }}>
+                  Durée pendant laquelle un regard soutenu détourné de l'écran (haut, bas, gauche,
+                  droite, ou vers l'arrière) est toléré avant suspension. Nécessite Webcam obligatoire.
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
