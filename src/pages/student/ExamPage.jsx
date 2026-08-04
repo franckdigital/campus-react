@@ -406,7 +406,18 @@ function WebcamMonitor({ examId, sessionId, enabled, onFlag, onFraudBlock, pause
       cv.toBlob(async blob => {
         if (!blob || !sessionId) return;
         const fd = new FormData(); fd.append('snapshot', blob, `snap_${Date.now()}.jpg`);
-        try { await elearningService.uploadExamSnapshot(sessionId, fd); } catch {}
+        try {
+          const res = await elearningService.uploadExamSnapshot(sessionId, fd);
+          // A second person in frame is unambiguous on its own — unlike a
+          // momentary distraction, it doesn't need a sustained streak
+          // before it's worth suspending over. Skipped while already
+          // paused/on a break, same as the local phone/face checks below,
+          // so this never stacks a second suspension on top of one already
+          // showing.
+          if (res?.multiple_faces && !pausedRef.current && !breakActiveRef.current) {
+            onFraudBlockRef.current?.('Une autre personne a été détectée à côté ou derrière le candidat.');
+          }
+        } catch {}
       }, 'image/jpeg', 0.85);
     };
     const t = setInterval(capture, WEBCAM_INTERVAL); capture();
