@@ -254,6 +254,10 @@ export const elearningService = {
     const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')).toString();
     return api.get(`/elearning/exams/absences-overview/${q ? `?${q}` : ''}`);
   },
+  getClassRankingByFiliere: (params = {}) => {
+    const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')).toString();
+    return api.get(`/elearning/exams/class-ranking/${q ? `?${q}` : ''}`);
+  },
   getMyExamSession: (examId) => api.get(`/elearning/exams/${examId}/my-session/`),
   getExamById: (id) => api.get(`/elearning/exams/${id}/`),
   deleteExamSession: (sessionId) => api.delete(`/elearning/exam-sessions/${sessionId}/`),
