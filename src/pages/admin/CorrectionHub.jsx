@@ -1839,6 +1839,116 @@ function ExamAbsencesOverview() {
   );
 }
 
+// ─── Classement par filière (classes) ──────────────────────────────────────────
+// Une filière regroupe plusieurs classes ; comparer les classes de deux
+// filières différentes n'aurait pas plus de sens que de comparer deux
+// matières entre elles (même principe que Classement, qui ne mélange jamais
+// deux examens) — la filière est donc un choix obligatoire, sans valeur
+// "Toutes les filières" par défaut. Le score de chaque classe est la moyenne
+// de toutes les notes individuelles de ses étudiants (voir class-ranking
+// côté backend), affichée sur 20 pour rester lisible d'un coup d'œil.
+const F = '#0d9488';
+
+function ClassRankingByFiliere() {
+  const [filiere, setFiliere] = useState('');
+  const [subject, setSubject] = useState('');
+  const { data: programsData } = useApi(() => academicService.getPrograms({ page_size: 200, is_active: true }), [], true);
+  const { data: subjectsData } = useApi(() => academicService.getSubjects({ page_size: 200, is_active: true }), [], true);
+  const programs = programsData?.results ?? (Array.isArray(programsData) ? programsData : []);
+  const subjects = subjectsData?.results ?? (Array.isArray(subjectsData) ? subjectsData : []);
+
+  // No network call until a filière is actually chosen — the backend
+  // requires it and would 400, and there's nothing meaningful to rank yet.
+  const { data, loading } = useApi(
+    () => (filiere
+      ? elearningService.getClassRankingByFiliere({ filiere, subject })
+      : Promise.resolve({ filiere_name: null, classes: [] })),
+    [filiere, subject], true
+  );
+  const classes = data?.classes || [];
+
+  const handleExportExcel = () => {
+    const rows = classes.map(c => ({
+      'Filière': data?.filiere_name || '',
+      'Rang': c.rank,
+      'Classe': c.class_name,
+      'Moyenne /20': c.average_score,
+      'Moyenne %': c.average_percent,
+      'Copies corrigées': c.graded_count,
+    }));
+    exportToExcel(rows,
+      ['Filière', 'Rang', 'Classe', 'Moyenne /20', 'Moyenne %', 'Copies corrigées'],
+      `classement-filiere-${new Date().toISOString().slice(0, 10)}`, 'Classement filière');
+  };
+
+  const handleExportPDF = () => {
+    const cols = ['Rang', 'Classe', 'Moyenne /20', 'Moyenne %', 'Copies corrigées'];
+    const rows = classes.map(c => [
+      String(c.rank), c.class_name, String(c.average_score), `${c.average_percent}%`, String(c.graded_count),
+    ]);
+    exportToPDF(`Classement des classes — ${data?.filiere_name || ''}`, cols, rows,
+      `classement-filiere-${new Date().toISOString().slice(0, 10)}`, {
+        'Filière': data?.filiere_name || '-',
+        'Classes classées': classes.length,
+        'Export du': new Date().toLocaleDateString('fr-FR'),
+      });
+  };
+
+  const selectStyle = "px-3 py-2 rounded-xl text-sm border outline-none";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={filiere} onChange={e => setFiliere(e.target.value)}
+                className={selectStyle} style={{ borderColor: filiere ? '#e2e8f0' : F, background: '#f8fafc' }}>
+          <option value="">Sélectionner une filière…</option>
+          {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <select value={subject} onChange={e => setSubject(e.target.value)}
+                className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
+          <option value="">Toutes les matières</option>
+          {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <div className="ml-auto">
+          <ExportMenu color={F} onExcel={handleExportExcel} onPDF={handleExportPDF} disabled={classes.length === 0} />
+        </div>
+      </div>
+      {!filiere
+        ? <Empty icon={Users} text="Choisissez une filière" sub="Sélectionnez une filière ci-dessus pour classer ses classes entre elles." color={F} />
+        : loading ? <Spinner />
+          : classes.length === 0
+            ? <Empty icon={Users} text="Aucune donnée" sub="Aucune copie corrigée pour les classes de cette filière avec ces filtres." color={F} />
+            : (
+              <div className="rounded-2xl border overflow-hidden overflow-x-auto" style={{ borderColor: '#99f6e4' }}>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[10px] font-bold uppercase tracking-wide" style={{ color: '#94a3b8', background: '#f0fdfa' }}>
+                      <th className="py-3 pl-4 pr-3">Rang</th>
+                      <th className="py-3 pr-3">Classe</th>
+                      <th className="py-3 pr-3">Moyenne</th>
+                      <th className="py-3">Copies corrigées</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {classes.map(c => (
+                      <tr key={c.class_id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                        <td className="py-2 pl-4 pr-3 font-black" style={{ color: F }}>{c.rank}</td>
+                        <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b' }}>{c.class_name}</td>
+                        <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b' }}>
+                          {c.average_score} / 20{' '}
+                          <span style={{ color: '#94a3b8', fontWeight: 400 }}>({c.average_percent}%)</span>
+                        </td>
+                        <td className="py-2" style={{ color: '#64748b' }}>{c.graded_count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+    </div>
+  );
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 const TABS = [
@@ -1847,6 +1957,7 @@ const TABS = [
   { id: 'exams',       label: 'Examens sécurisés',   icon: Shield,         color: A },
   { id: 'ranking',     label: 'Classement',          icon: Trophy,         color: A },
   { id: 'absences',    label: 'Absents aux examens', icon: UserX,          color: R },
+  { id: 'filiere-ranking', label: 'Classement par filière', icon: Users,   color: F },
 ];
 
 export default function CorrectionHub({ notify }) {
@@ -1877,6 +1988,7 @@ export default function CorrectionHub({ notify }) {
       {tab === 'exams'       && <ExamCorrectionList        notify={notify} />}
       {tab === 'ranking'     && <ExamRankingOverview />}
       {tab === 'absences'    && <ExamAbsencesOverview />}
+      {tab === 'filiere-ranking' && <ClassRankingByFiliere />}
     </div>
   );
 }
