@@ -1852,26 +1852,33 @@ const F = '#0d9488';
 function ClassRankingByFiliere() {
   const [filiere, setFiliere] = useState('');
   const [subject, setSubject] = useState('');
+  const [classObj, setClassObj] = useState('');
   const { data: programsData } = useApi(() => academicService.getPrograms({ page_size: 200, is_active: true }), [], true);
   const programs = programsData?.results ?? (Array.isArray(programsData) ? programsData : []);
 
-  // Scoped to subjects actually programmed (≥1 published exam) within the
-  // chosen filière — listing every subject in the school let the admin pick
-  // one never taught there, which always returned an empty ranking and read
-  // as "the filter is broken" rather than "nothing matches this combination".
+  // Scoped to subjects/classes actually programmed (≥1 published exam)
+  // within the chosen filière — listing everything in the school let the
+  // admin pick a combination that never had any data, which always
+  // returned an empty ranking and read as "the filter is broken" rather
+  // than "nothing matches this combination".
   const { data: subjectsData } = useApi(
     () => (filiere ? elearningService.getSubjectsForFiliere({ filiere }) : Promise.resolve({ subjects: [] })),
     [filiere], true
   );
   const subjects = subjectsData?.subjects || [];
+  const { data: classesForFiliereData } = useApi(
+    () => (filiere ? elearningService.getClassesForFiliere({ filiere }) : Promise.resolve({ classes: [] })),
+    [filiere], true
+  );
+  const classOptions = classesForFiliereData?.classes || [];
 
   // No network call until a filière is actually chosen — the backend
   // requires it and would 400, and there's nothing meaningful to rank yet.
   const { data, loading } = useApi(
     () => (filiere
-      ? elearningService.getClassRankingByFiliere({ filiere, subject })
+      ? elearningService.getClassRankingByFiliere({ filiere, subject, class_obj: classObj })
       : Promise.resolve({ filiere_name: null, classes: [] })),
-    [filiere, subject], true
+    [filiere, subject, classObj], true
   );
   const classes = data?.classes || [];
 
@@ -1908,10 +1915,16 @@ function ClassRankingByFiliere() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <select value={filiere}
-                onChange={e => { setFiliere(e.target.value); setSubject(''); }}
+                onChange={e => { setFiliere(e.target.value); setSubject(''); setClassObj(''); }}
                 className={selectStyle} style={{ borderColor: filiere ? '#e2e8f0' : F, background: '#f8fafc' }}>
           <option value="">Sélectionner une filière…</option>
           {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <select value={classObj} onChange={e => setClassObj(e.target.value)}
+                disabled={!filiere}
+                className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
+          <option value="">Toutes les classes programmées</option>
+          {classOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <select value={subject} onChange={e => setSubject(e.target.value)}
                 disabled={!filiere}
