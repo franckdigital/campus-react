@@ -14,7 +14,7 @@ import { useSite } from '../../contexts/SiteContext';
 import { useApi } from '../../hooks/useApi';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { ExportMenu } from '../../components/ui/PageHeader';
-import { exportToExcel, exportToPDF } from '../../utils/export';
+import { exportToExcel, exportToExcelMultiSheet, exportToPDF } from '../../utils/export';
 
 const P = '#7c3aed';
 const C = '#db2777';
@@ -1954,29 +1954,38 @@ function ClassRankingByFiliere() {
   const cohorts = data?.cohorts || [];
   const totalStudents = cohorts.reduce((sum, c) => sum + c.student_count, 0);
 
-  // One row per étudiant — the per-subject notes vary in number/name from
-  // one cohorte to the next, so they're flattened into a single "Notes"
-  // cell ("Matière: note; ...") rather than dynamic columns the export
-  // helpers don't support.
+  // Mirrors the three cell states rendered on screen (CohortRankingCard) —
+  // shared so the exports show exactly the same thing as the page.
+  const noteCellText = (s, subj) => {
+    const cell = s.notes[subj];
+    if (!cell) return '—';
+    return cell.graded ? cell.value : 'En attente de correction';
+  };
+  // One row per étudiant — flattened into a single "Notes" cell for the PDF
+  // export below, which (unlike Excel) can't have a different column set
+  // per cohorte within one table.
   const formatNotes = (s) => Object.entries(s.notes)
     .map(([subj, note]) => `${subj}: ${note.graded ? note.value : 'en attente de correction'}`)
     .join(' ; ');
 
+  // One SHEET per cohorte, with one COLUMN per matière — matches the page
+  // exactly (each cohorte's own card/table) instead of flattening every
+  // cohorte's notes into a single catch-all text cell.
   const handleExportExcel = () => {
-    const rows = cohorts.flatMap(c => c.students.map(s => ({
-      'Cohorte': c.cohort_name,
-      'Filière': s.filiere_code,
-      'Classe': s.class_name,
-      'Rang': s.rank,
-      'Nom': s.last_name,
-      'Prénoms': s.first_name,
-      'Matricule': s.matricule,
-      'Notes': formatNotes(s),
-      'Moyenne pondérée /20': s.weighted_average,
-    })));
-    exportToExcel(rows,
-      ['Cohorte', 'Filière', 'Classe', 'Rang', 'Nom', 'Prénoms', 'Matricule', 'Notes', 'Moyenne pondérée /20'],
-      `classement-filiere-${new Date().toISOString().slice(0, 10)}`, 'Classement filière');
+    const sheets = cohorts.map(c => ({
+      name: c.cohort_name,
+      headers: ['Rang', 'Nom', 'Prénoms', 'Filière', 'Classe', ...c.subjects, 'Moyenne pondérée /20'],
+      rows: c.students.map(s => ({
+        'Rang': s.rank,
+        'Nom': s.last_name,
+        'Prénoms': s.first_name,
+        'Filière': s.filiere_code,
+        'Classe': s.class_name,
+        ...Object.fromEntries(c.subjects.map(subj => [subj, noteCellText(s, subj)])),
+        'Moyenne pondérée /20': s.weighted_average,
+      })),
+    }));
+    exportToExcelMultiSheet(sheets, `classement-filiere-${new Date().toISOString().slice(0, 10)}`);
   };
 
   const handleExportPDF = () => {
