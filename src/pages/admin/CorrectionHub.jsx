@@ -1982,7 +1982,7 @@ export default function CorrectionHub({ notify }) {
         </p>
       </div>
 
-      <div className="flex gap-2 p-1 rounded-xl w-full sm:w-fit overflow-x-auto" style={{ background: '#f1f5f9' }}>
+      <div className="flex gap-2 p-1 rounded-xl w-full sm:w-fit sm:max-w-full overflow-x-auto" style={{ background: '#f1f5f9' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all flex-shrink-0 whitespace-nowrap"
