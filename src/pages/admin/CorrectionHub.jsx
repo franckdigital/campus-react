@@ -14,7 +14,7 @@ import { useSite } from '../../contexts/SiteContext';
 import { useApi } from '../../hooks/useApi';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { ExportMenu } from '../../components/ui/PageHeader';
-import { exportToExcel, exportToExcelMultiSheet, exportToPDF } from '../../utils/export';
+import { exportToExcel, exportToExcelMultiSheet, exportToPDF, exportToPDFMultiSection } from '../../utils/export';
 
 const P = '#7c3aed';
 const C = '#db2777';
@@ -1961,13 +1961,6 @@ function ClassRankingByFiliere() {
     if (!cell) return '—';
     return cell.graded ? cell.value : 'En attente de correction';
   };
-  // One row per étudiant — flattened into a single "Notes" cell for the PDF
-  // export below, which (unlike Excel) can't have a different column set
-  // per cohorte within one table.
-  const formatNotes = (s) => Object.entries(s.notes)
-    .map(([subj, note]) => `${subj}: ${note.graded ? note.value : 'en attente de correction'}`)
-    .join(' ; ');
-
   // One SHEET per cohorte, with one COLUMN per matière — matches the page
   // exactly (each cohorte's own card/table) instead of flattening every
   // cohorte's notes into a single catch-all text cell.
@@ -1988,15 +1981,22 @@ function ClassRankingByFiliere() {
     exportToExcelMultiSheet(sheets, `classement-filiere-${new Date().toISOString().slice(0, 10)}`);
   };
 
+  // One SECTION per cohorte, with one COLUMN per matière — matches the page
+  // exactly, same structure and cell text as handleExportExcel above.
   const handleExportPDF = () => {
-    const cols = ['Cohorte', 'Filière', 'Classe', 'Rang', 'Nom', 'Prénoms', 'Notes', 'Moyenne /20'];
-    const rows = cohorts.flatMap(c => c.students.map(s => [
-      c.cohort_name, s.filiere_code, s.class_name, String(s.rank), s.last_name, s.first_name, formatNotes(s), String(s.weighted_average),
-    ]));
-    exportToPDF('Classement des classes par filière', cols, rows,
+    const sections = cohorts.map(c => ({
+      heading: `${c.cohort_name} — Moyenne ${c.average_score} / 20 · ${c.student_count} étudiant${c.student_count > 1 ? 's' : ''}`,
+      columns: ['Rang', 'Nom', 'Prénoms', 'Filière', 'Classe', ...c.subjects, 'Moyenne pondérée /20'],
+      rows: c.students.map(s => [
+        String(s.rank), s.last_name, s.first_name, s.filiere_code, s.class_name,
+        ...c.subjects.map(subj => String(noteCellText(s, subj))),
+        String(s.weighted_average),
+      ]),
+    }));
+    exportToPDFMultiSection('Classement des classes par filière', sections,
       `classement-filiere-${new Date().toISOString().slice(0, 10)}`, {
         'Cohortes': cohorts.length,
-        'Étudiants classés': rows.length,
+        'Étudiants classés': totalStudents,
         'Export du': new Date().toLocaleDateString('fr-FR'),
       });
   };

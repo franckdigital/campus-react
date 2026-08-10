@@ -79,6 +79,88 @@ export function exportToExcelMultiSheet(sheets, filename = 'export') {
 }
 
 /**
+ * Export data to a PDF file with MULTIPLE tables, each with its own column
+ * set (e.g. one ranking cohort per section, each with its own subject
+ * columns) — for data the single-table exportToPDF below can't represent
+ * without flattening everything into one catch-all text column.
+ * @param {string} title    - Document title shown at top
+ * @param {{heading: string, columns: string[], rows: string[][]}[]} sections
+ * @param {string} filename - Filename without extension
+ * @param {Object} meta     - Optional key/value pairs shown below title
+ */
+export function exportToPDFMultiSection(title, sections, filename = 'export', meta = {}) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  doc.setFillColor(217, 119, 6);
+  doc.rect(0, 0, pageW, 18, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text(pdfSafe(title), 14, 12);
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.text(pdfSafe(`Exporte le ${today}`), pageW - 14, 12, { align: 'right' });
+
+  let y = 24;
+  const metaEntries = Object.entries(meta);
+  if (metaEntries.length) {
+    doc.setTextColor(71, 85, 105);
+    doc.setFontSize(8);
+    metaEntries.forEach(([k, v]) => {
+      doc.setFont('helvetica', 'bold');
+      const keyStr = pdfSafe(`${k} :`);
+      doc.text(keyStr, 14, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(pdfSafe(String(v)), 14 + doc.getTextWidth(`${k} : `), y);
+      y += 5;
+    });
+    y += 2;
+  }
+
+  sections.forEach((section) => {
+    // Start the section on a fresh page if there's no room for a heading
+    // plus at least a couple of rows.
+    if (y > pageH - 40) {
+      doc.addPage();
+      y = 16;
+    }
+    doc.setTextColor(15, 118, 110);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text(pdfSafe(section.heading), 14, y);
+    y += 6;
+
+    autoTable(doc, {
+      startY: y,
+      head: [section.columns.map(pdfSafe)],
+      body: section.rows.map(row => row.map(pdfSafe)),
+      styles: { fontSize: 7, cellPadding: 2 },
+      headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      tableLineColor: [226, 232, 240],
+      tableLineWidth: 0.2,
+      margin: { left: 14, right: 14 },
+    });
+
+    y = doc.lastAutoTable.finalY + 10;
+  });
+
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Page ${i} / ${pageCount}`, pageW - 14, pageH - 6, { align: 'right' });
+    doc.text('Campus LMS', 14, pageH - 6);
+  }
+
+  doc.save(`${filename}.pdf`);
+}
+
+/**
  * Export data to a PDF file with a styled table.
  * @param {string}     title    - Document title shown at top
  * @param {string[]}   columns  - Column header labels
