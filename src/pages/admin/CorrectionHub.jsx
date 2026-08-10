@@ -1559,20 +1559,29 @@ function RankingGroupCard({ group }) {
                 <th className="pb-2 pr-3">Prénoms</th>
                 <th className="pb-2 pr-3">Matière</th>
                 <th className="pb-2 pr-3">Note</th>
-                <th className="pb-2">Mention</th>
+                <th className="pb-2 pr-3">Mention</th>
+                <th className="pb-2">Présence</th>
               </tr>
             </thead>
             <tbody>
-              {group.results.map(r => (
-                <tr key={r.rank} style={{ borderTop: '1px solid #f1f5f9' }}>
-                  <td className="py-2 pr-3 font-black" style={{ color: '#d97706' }}>{r.rank}</td>
-                  <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b' }}>{r.last_name}</td>
-                  <td className="py-2 pr-3" style={{ color: '#374151' }}>{r.first_name}</td>
-                  <td className="py-2 pr-3" style={{ color: '#64748b' }}>{group.subject_name || '—'}</td>
-                  <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b' }}>{r.score} / {group.max_score}</td>
-                  <td className="py-2 font-semibold" style={{ color: '#374151' }}>{r.mention}</td>
-                </tr>
-              ))}
+              {group.results.map(r => {
+                const absent = r.status === 'absent';
+                return (
+                  <tr key={r.matricule} style={{ borderTop: '1px solid #f1f5f9', opacity: absent ? 0.6 : 1 }}>
+                    <td className="py-2 pr-3 font-black" style={{ color: '#d97706' }}>{r.rank ?? '—'}</td>
+                    <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b' }}>{r.last_name}</td>
+                    <td className="py-2 pr-3" style={{ color: '#374151' }}>{r.first_name}</td>
+                    <td className="py-2 pr-3" style={{ color: '#64748b' }}>{group.subject_name || '—'}</td>
+                    <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b' }}>
+                      {absent ? '—' : `${r.score} / ${group.max_score}`}
+                    </td>
+                    <td className="py-2 pr-3 font-semibold" style={{ color: '#374151' }}>{r.mention ?? '—'}</td>
+                    <td className="py-2 font-semibold" style={{ color: absent ? '#dc2626' : '#059669' }}>
+                      {absent ? 'Absent' : 'Présent'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1609,22 +1618,25 @@ function ExamRankingOverview() {
       'Matière': g.subject_name || '',
       'Classe': g.class_name || '',
       'Site': g.site_name || '',
-      'Rang': r.rank,
+      'Rang': r.rank ?? '—',
       'Nom': r.last_name,
       'Prénoms': r.first_name,
-      'Note': `${r.score} / ${g.max_score}`,
-      'Mention': r.mention,
+      'Note': r.status === 'absent' ? '—' : `${r.score} / ${g.max_score}`,
+      'Mention': r.mention ?? '—',
+      'Présence': r.status === 'absent' ? 'Absent' : 'Présent',
     })));
     exportToExcel(rows,
-      ['Examen', 'Matière', 'Classe', 'Site', 'Rang', 'Nom', 'Prénoms', 'Note', 'Mention'],
+      ['Examen', 'Matière', 'Classe', 'Site', 'Rang', 'Nom', 'Prénoms', 'Note', 'Mention', 'Présence'],
       `classement-${new Date().toISOString().slice(0, 10)}`, 'Classement');
   };
 
   const handleExportPDF = () => {
-    const cols = ['Examen', 'Matière', 'Classe', 'Rang', 'Nom', 'Prénoms', 'Note', 'Mention'];
+    const cols = ['Examen', 'Matière', 'Classe', 'Rang', 'Nom', 'Prénoms', 'Note', 'Mention', 'Présence'];
     const rows = groups.flatMap(g => g.results.map(r => [
       g.exam_title, g.subject_name || '-', g.class_name || '-',
-      String(r.rank), r.last_name, r.first_name, `${r.score} / ${g.max_score}`, r.mention,
+      r.rank != null ? String(r.rank) : '—', r.last_name, r.first_name,
+      r.status === 'absent' ? '—' : `${r.score} / ${g.max_score}`, r.mention ?? '—',
+      r.status === 'absent' ? 'Absent' : 'Présent',
     ]));
     exportToPDF('Classement des examens sécurisés', cols, rows,
       `classement-${new Date().toISOString().slice(0, 10)}`, {
