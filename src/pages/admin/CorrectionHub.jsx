@@ -6,7 +6,7 @@ import {
   CheckCircle, Clock, ChevronDown, ChevronUp, FileText, Award,
   BarChart2, X, Search, Users, Trophy, AlertTriangle, Plus,
   Hash, ToggleLeft, Type, ListChecks, GitCompare, ArrowUpDown,
-  Camera, ShieldAlert, Calendar, XCircle, MessageCircle, Trash2,
+  Camera, ShieldAlert, Calendar, XCircle, MessageCircle, Trash2, UserX,
 } from 'lucide-react';
 import { elearningService } from '../../services/elearning';
 import { academicService } from '../../services';
@@ -1558,6 +1558,7 @@ function RankingGroupCard({ group }) {
                 <th className="pb-2 pr-3">Nom</th>
                 <th className="pb-2 pr-3">Prénoms</th>
                 <th className="pb-2 pr-3">Matière</th>
+                <th className="pb-2 pr-3">Note</th>
                 <th className="pb-2">Mention</th>
               </tr>
             </thead>
@@ -1568,6 +1569,7 @@ function RankingGroupCard({ group }) {
                   <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b' }}>{r.last_name}</td>
                   <td className="py-2 pr-3" style={{ color: '#374151' }}>{r.first_name}</td>
                   <td className="py-2 pr-3" style={{ color: '#64748b' }}>{group.subject_name || '—'}</td>
+                  <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b' }}>{r.score} / {group.max_score}</td>
                   <td className="py-2 font-semibold" style={{ color: '#374151' }}>{r.mention}</td>
                 </tr>
               ))}
@@ -1610,18 +1612,19 @@ function ExamRankingOverview() {
       'Rang': r.rank,
       'Nom': r.last_name,
       'Prénoms': r.first_name,
+      'Note': `${r.score} / ${g.max_score}`,
       'Mention': r.mention,
     })));
     exportToExcel(rows,
-      ['Examen', 'Matière', 'Classe', 'Site', 'Rang', 'Nom', 'Prénoms', 'Mention'],
+      ['Examen', 'Matière', 'Classe', 'Site', 'Rang', 'Nom', 'Prénoms', 'Note', 'Mention'],
       `classement-${new Date().toISOString().slice(0, 10)}`, 'Classement');
   };
 
   const handleExportPDF = () => {
-    const cols = ['Examen', 'Matière', 'Classe', 'Rang', 'Nom', 'Prénoms', 'Mention'];
+    const cols = ['Examen', 'Matière', 'Classe', 'Rang', 'Nom', 'Prénoms', 'Note', 'Mention'];
     const rows = groups.flatMap(g => g.results.map(r => [
       g.exam_title, g.subject_name || '-', g.class_name || '-',
-      String(r.rank), r.last_name, r.first_name, r.mention,
+      String(r.rank), r.last_name, r.first_name, `${r.score} / ${g.max_score}`, r.mention,
     ]));
     exportToPDF('Classement des examens sécurisés', cols, rows,
       `classement-${new Date().toISOString().slice(0, 10)}`, {
@@ -1668,6 +1671,167 @@ function ExamRankingOverview() {
   );
 }
 
+// ─── Absents aux examens (examens sécurisés) ───────────────────────────────────
+// Étudiants éligibles à un examen (inscrits dans la classe de l'examen, ou
+// explicitement ajoutés via SecureExam.students) qui n'ont jamais démarré de
+// session pour cet examen — voir SecureExamViewSet._expected_students côté
+// backend. Même structure par bloc-examen que Classement, avec en plus un
+// filtre par examen précis et par plage de dates.
+const R = '#dc2626';
+
+function AbsenceGroupCard({ group }) {
+  const [open, setOpen] = useState(true);
+  const subtitle = [group.subject_name, group.class_name, group.site_name].filter(Boolean).join(' — ');
+  const dateLabel = group.exam_date ? new Date(group.exam_date).toLocaleDateString('fr-FR') : null;
+  return (
+    <div className="rounded-2xl border overflow-hidden" style={{ borderColor: '#fecaca' }}>
+      <button onClick={() => setOpen(o => !o)}
+              className="w-full flex items-center justify-between gap-3 p-4 text-left"
+              style={{ background: '#fef2f2' }}>
+        <div className="min-w-0">
+          <p className="text-sm font-black truncate" style={{ color: '#991b1b' }}>{group.exam_title}</p>
+          <p className="text-xs mt-0.5" style={{ color: '#b91c1c' }}>
+            {[subtitle, dateLabel].filter(Boolean).join(' — ')}
+            {' · '}{group.absent_count} absent{group.absent_count > 1 ? 's' : ''} / {group.expected_count} attendu{group.expected_count > 1 ? 's' : ''}
+          </p>
+        </div>
+        {open ? <ChevronUp className="h-4 w-4 flex-shrink-0" style={{ color: '#b91c1c' }} />
+              : <ChevronDown className="h-4 w-4 flex-shrink-0" style={{ color: '#b91c1c' }} />}
+      </button>
+      {open && (
+        <div className="p-4 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[10px] font-bold uppercase tracking-wide" style={{ color: '#94a3b8' }}>
+                <th className="pb-2 pr-3">Nom</th>
+                <th className="pb-2 pr-3">Prénoms</th>
+                <th className="pb-2">Matricule</th>
+              </tr>
+            </thead>
+            <tbody>
+              {group.absentees.map((s, i) => (
+                <tr key={i} style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b' }}>{s.last_name}</td>
+                  <td className="py-2 pr-3" style={{ color: '#374151' }}>{s.first_name}</td>
+                  <td className="py-2" style={{ color: '#64748b' }}>{s.matricule}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExamAbsencesOverview() {
+  const [filiere, setFiliere] = useState('');
+  const [classObj, setClassObj] = useState('');
+  const [site, setSite] = useState('');
+  const [subject, setSubject] = useState('');
+  const [examId, setExamId] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const { sites } = useSite();
+  const { data: programsData } = useApi(() => academicService.getPrograms({ page_size: 200, is_active: true }), [], true);
+  const { data: classesData } = useApi(() => academicService.getClasses({ page_size: 500, is_active: true }), [], true);
+  const { data: subjectsData } = useApi(() => academicService.getSubjects({ page_size: 200, is_active: true }), [], true);
+  // Exam options narrow down as filiere/classe/matière/site are picked, so the
+  // dropdown never lists an exam the other filters would exclude anyway.
+  const { data: examsData } = useApi(
+    () => elearningService.getSecureExams({ page_size: 200, class_obj: classObj, site, subject, is_published: true }),
+    [classObj, site, subject], true
+  );
+  const programs = programsData?.results ?? (Array.isArray(programsData) ? programsData : []);
+  const classes = classesData?.results ?? (Array.isArray(classesData) ? classesData : []);
+  const subjects = subjectsData?.results ?? (Array.isArray(subjectsData) ? subjectsData : []);
+  const exams = examsData?.results ?? (Array.isArray(examsData) ? examsData : []);
+
+  const { data, loading } = useApi(
+    () => elearningService.getExamAbsencesOverview({
+      filiere, class_obj: classObj, site, subject, exam: examId,
+      date_from: dateFrom, date_to: dateTo,
+    }),
+    [filiere, classObj, site, subject, examId, dateFrom, dateTo], true
+  );
+  const groups = data?.groups || [];
+
+  const handleExportExcel = () => {
+    const rows = groups.flatMap(g => g.absentees.map(s => ({
+      'Examen': g.exam_title,
+      'Date': g.exam_date ? new Date(g.exam_date).toLocaleDateString('fr-FR') : '',
+      'Matière': g.subject_name || '',
+      'Classe': g.class_name || '',
+      'Site': g.site_name || '',
+      'Nom': s.last_name,
+      'Prénoms': s.first_name,
+      'Matricule': s.matricule,
+    })));
+    exportToExcel(rows,
+      ['Examen', 'Date', 'Matière', 'Classe', 'Site', 'Nom', 'Prénoms', 'Matricule'],
+      `absences-examens-${new Date().toISOString().slice(0, 10)}`, 'Absences');
+  };
+
+  const handleExportPDF = () => {
+    const cols = ['Examen', 'Date', 'Matière', 'Classe', 'Nom', 'Prénoms', 'Matricule'];
+    const rows = groups.flatMap(g => g.absentees.map(s => [
+      g.exam_title, g.exam_date ? new Date(g.exam_date).toLocaleDateString('fr-FR') : '-',
+      g.subject_name || '-', g.class_name || '-', s.last_name, s.first_name, s.matricule,
+    ]));
+    exportToPDF('Absents aux examens sécurisés', cols, rows,
+      `absences-examens-${new Date().toISOString().slice(0, 10)}`, {
+        'Examens concernés': groups.length,
+        'Étudiants absents': rows.length,
+        'Export du': new Date().toLocaleDateString('fr-FR'),
+      });
+  };
+
+  const selectStyle = "px-3 py-2 rounded-xl text-sm border outline-none";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={filiere} onChange={e => setFiliere(e.target.value)}
+                className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
+          <option value="">Toutes les filières</option>
+          {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <select value={classObj} onChange={e => setClassObj(e.target.value)}
+                className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
+          <option value="">Toutes les classes</option>
+          {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select value={subject} onChange={e => setSubject(e.target.value)}
+                className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
+          <option value="">Toutes les matières</option>
+          {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <select value={site} onChange={e => setSite(e.target.value)}
+                className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
+          <option value="">Tous les sites</option>
+          {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <select value={examId} onChange={e => setExamId(e.target.value)}
+                className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
+          <option value="">Tous les examens</option>
+          {exams.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
+        </select>
+        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+               className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }} title="Du" />
+        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+               className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }} title="Au" />
+        <div className="ml-auto">
+          <ExportMenu color={R} onExcel={handleExportExcel} onPDF={handleExportPDF} disabled={groups.length === 0} />
+        </div>
+      </div>
+      {loading ? <Spinner />
+        : groups.length === 0
+          ? <Empty icon={UserX} text="Aucune absence" sub="Aucun étudiant éligible n'est absent d'un examen correspondant à ces filtres." color={R} />
+          : <div className="space-y-3">{groups.map(g => <AbsenceGroupCard key={g.exam_id} group={g} />)}</div>}
+    </div>
+  );
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 const TABS = [
@@ -1675,6 +1839,7 @@ const TABS = [
   { id: 'quiz',        label: 'Quiz & Évaluations',  icon: ClipboardCheck, color: P },
   { id: 'exams',       label: 'Examens sécurisés',   icon: Shield,         color: A },
   { id: 'ranking',     label: 'Classement',          icon: Trophy,         color: A },
+  { id: 'absences',    label: 'Absents aux examens', icon: UserX,          color: R },
 ];
 
 export default function CorrectionHub({ notify }) {
@@ -1704,6 +1869,7 @@ export default function CorrectionHub({ notify }) {
       {tab === 'quiz'        && <QuizCorrectionList        notify={notify} />}
       {tab === 'exams'       && <ExamCorrectionList        notify={notify} />}
       {tab === 'ranking'     && <ExamRankingOverview />}
+      {tab === 'absences'    && <ExamAbsencesOverview />}
     </div>
   );
 }
