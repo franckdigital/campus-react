@@ -1688,13 +1688,15 @@ function ExamRankingOverview() {
 // explicitement ajoutés via SecureExam.students) qui n'ont jamais démarré de
 // session pour cet examen — voir SecureExamViewSet._expected_students côté
 // backend. Même structure par bloc-examen que Classement, avec en plus un
-// filtre par examen précis et par plage de dates.
+// filtre par examen précis et une colonne Date de l'examen (le backend
+// accepte aussi date_from/date_to, volontairement pas exposés ici — filtrer
+// par examen précis suffit à cibler une date donnée).
 const R = '#dc2626';
 
 function AbsenceGroupCard({ group }) {
   const [open, setOpen] = useState(true);
   const subtitle = [group.subject_name, group.class_name, group.site_name].filter(Boolean).join(' — ');
-  const dateLabel = group.exam_date ? new Date(group.exam_date).toLocaleDateString('fr-FR') : null;
+  const dateLabel = group.exam_date ? new Date(group.exam_date).toLocaleDateString('fr-FR') : '—';
   return (
     <div className="rounded-2xl border overflow-hidden" style={{ borderColor: '#fecaca' }}>
       <button onClick={() => setOpen(o => !o)}
@@ -1703,7 +1705,7 @@ function AbsenceGroupCard({ group }) {
         <div className="min-w-0">
           <p className="text-sm font-black truncate" style={{ color: '#991b1b' }}>{group.exam_title}</p>
           <p className="text-xs mt-0.5" style={{ color: '#b91c1c' }}>
-            {[subtitle, dateLabel].filter(Boolean).join(' — ')}
+            {subtitle}
             {' · '}{group.absent_count} absent{group.absent_count > 1 ? 's' : ''} / {group.expected_count} attendu{group.expected_count > 1 ? 's' : ''}
           </p>
         </div>
@@ -1717,7 +1719,8 @@ function AbsenceGroupCard({ group }) {
               <tr className="text-left text-[10px] font-bold uppercase tracking-wide" style={{ color: '#94a3b8' }}>
                 <th className="pb-2 pr-3">Nom</th>
                 <th className="pb-2 pr-3">Prénoms</th>
-                <th className="pb-2">Matricule</th>
+                <th className="pb-2 pr-3">Matricule</th>
+                <th className="pb-2">Date de l'examen</th>
               </tr>
             </thead>
             <tbody>
@@ -1725,7 +1728,8 @@ function AbsenceGroupCard({ group }) {
                 <tr key={i} style={{ borderTop: '1px solid #f1f5f9' }}>
                   <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b' }}>{s.last_name}</td>
                   <td className="py-2 pr-3" style={{ color: '#374151' }}>{s.first_name}</td>
-                  <td className="py-2" style={{ color: '#64748b' }}>{s.matricule}</td>
+                  <td className="py-2 pr-3" style={{ color: '#64748b' }}>{s.matricule}</td>
+                  <td className="py-2" style={{ color: '#64748b' }}>{dateLabel}</td>
                 </tr>
               ))}
             </tbody>
@@ -1742,8 +1746,6 @@ function ExamAbsencesOverview() {
   const [site, setSite] = useState('');
   const [subject, setSubject] = useState('');
   const [examId, setExamId] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
   const { sites } = useSite();
   const { data: programsData } = useApi(() => academicService.getPrograms({ page_size: 200, is_active: true }), [], true);
   const { data: classesData } = useApi(() => academicService.getClasses({ page_size: 500, is_active: true }), [], true);
@@ -1760,11 +1762,8 @@ function ExamAbsencesOverview() {
   const exams = examsData?.results ?? (Array.isArray(examsData) ? examsData : []);
 
   const { data, loading } = useApi(
-    () => elearningService.getExamAbsencesOverview({
-      filiere, class_obj: classObj, site, subject, exam: examId,
-      date_from: dateFrom, date_to: dateTo,
-    }),
-    [filiere, classObj, site, subject, examId, dateFrom, dateTo], true
+    () => elearningService.getExamAbsencesOverview({ filiere, class_obj: classObj, site, subject, exam: examId }),
+    [filiere, classObj, site, subject, examId], true
   );
   const groups = data?.groups || [];
 
@@ -1828,10 +1827,6 @@ function ExamAbsencesOverview() {
           <option value="">Tous les examens</option>
           {exams.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
         </select>
-        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-               className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }} title="Du" />
-        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-               className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }} title="Au" />
         <div className="ml-auto">
           <ExportMenu color={R} onExcel={handleExportExcel} onPDF={handleExportPDF} disabled={groups.length === 0} />
         </div>
