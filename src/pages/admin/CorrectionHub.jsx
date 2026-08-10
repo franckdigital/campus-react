@@ -1852,6 +1852,16 @@ function ExamAbsencesOverview() {
 // chaque examen (voir class-ranking côté backend), affichée sur 20.
 const F = '#0d9488';
 
+// Rang/Nom/Prénoms pinned while scrolling horizontally through the subject
+// columns (there can be many) — without this, scrolling right hides the
+// student's identity and only a fragment of a name column peeks out at the
+// scroll boundary, unreadable and easy to mistake for garbage data.
+const STICKY_COL_STYLE = [
+  { position: 'sticky', left: 0, background: '#fff', zIndex: 1, minWidth: 44 },
+  { position: 'sticky', left: 44, background: '#fff', zIndex: 1, minWidth: 130 },
+  { position: 'sticky', left: 174, background: '#fff', zIndex: 1, minWidth: 130, boxShadow: '2px 0 4px -2px rgba(15,23,42,0.15)' },
+];
+
 function CohortRankingCard({ cohort }) {
   const [open, setOpen] = useState(true);
   return (
@@ -1874,9 +1884,9 @@ function CohortRankingCard({ cohort }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-[10px] font-bold uppercase tracking-wide" style={{ color: '#94a3b8' }}>
-                <th className="pb-2 pr-3">Rang</th>
-                <th className="pb-2 pr-3">Nom</th>
-                <th className="pb-2 pr-3">Prénoms</th>
+                <th className="pb-2 pr-3" style={STICKY_COL_STYLE[0]}>Rang</th>
+                <th className="pb-2 pr-3" style={STICKY_COL_STYLE[1]}>Nom</th>
+                <th className="pb-2 pr-3" style={STICKY_COL_STYLE[2]}>Prénoms</th>
                 <th className="pb-2 pr-3">Filière</th>
                 <th className="pb-2 pr-3">Classe</th>
                 {cohort.subjects.map(subj => <th key={subj} className="pb-2 pr-3">{subj}</th>)}
@@ -1886,9 +1896,9 @@ function CohortRankingCard({ cohort }) {
             <tbody>
               {cohort.students.map(s => (
                 <tr key={s.matricule} style={{ borderTop: '1px solid #f1f5f9' }}>
-                  <td className="py-2 pr-3 font-black" style={{ color: F }}>{s.rank}</td>
-                  <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b' }}>{s.last_name}</td>
-                  <td className="py-2 pr-3" style={{ color: '#374151' }}>{s.first_name}</td>
+                  <td className="py-2 pr-3 font-black" style={{ color: F, ...STICKY_COL_STYLE[0] }}>{s.rank}</td>
+                  <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b', ...STICKY_COL_STYLE[1] }}>{s.last_name}</td>
+                  <td className="py-2 pr-3" style={{ color: '#374151', ...STICKY_COL_STYLE[2] }}>{s.first_name}</td>
                   <td className="py-2 pr-3" style={{ color: '#64748b' }}>{s.filiere_code || '—'}</td>
                   <td className="py-2 pr-3" style={{ color: '#64748b' }}>{s.class_name}</td>
                   {cohort.subjects.map(subj => {
