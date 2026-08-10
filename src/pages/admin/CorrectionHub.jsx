@@ -1843,12 +1843,15 @@ function ExamAbsencesOverview() {
 // Une filière regroupe plusieurs classes ; comparer les classes de deux
 // filières différentes n'aurait pas plus de sens que de comparer deux
 // matières entre elles (même principe que Classement, qui ne mélange jamais
-// deux examens) — la filière est donc un choix obligatoire, sans valeur
-// "Toutes les filières" par défaut. Le score de chaque classe est la moyenne
-// de toutes les notes individuelles de ses étudiants (voir class-ranking
-// côté backend), affichée sur 20 pour rester lisible d'un coup d'œil. Chaque
-// carte de classe se déplie pour révéler, par étudiant, sa note dans chaque
-// matière programmée, sa moyenne pondérée par le coefficient de chaque
+// deux examens) — mais la filière n'est qu'un filtre OPTIONNEL : à
+// l'ouverture de l'onglet, toutes les filières ayant des données s'affichent
+// d'emblée, chacune classée indépendamment ; le sélecteur ne sert qu'à
+// réduire ensuite l'affichage à une filière précise. Le score de chaque
+// classe est la moyenne de toutes les notes individuelles de ses étudiants
+// (voir class-ranking côté backend), affichée sur 20 pour rester lisible
+// d'un coup d'œil. Chaque carte de classe se déplie pour révéler, par
+// étudiant, sa note dans chaque matière programmée, sa moyenne pondérée par
+// le coefficient de chaque
 // examen, et son rang au sein de sa classe.
 const F = '#0d9488';
 
@@ -1930,15 +1933,17 @@ function ClassRankingByFiliere() {
   );
   const classOptions = classesForFiliereData?.classes || [];
 
-  // No network call until a filière is actually chosen — the backend
-  // requires it and would 400, and there's nothing meaningful to rank yet.
+  // Always fetched -- filiere/classe/matiere are optional narrowing filters,
+  // not a precondition. Opening the tab shows every filiere that already
+  // has graded exams, grouped and ranked independently per filiere, instead
+  // of forcing the admin to guess which filiere has data before seeing
+  // anything.
   const { data, loading } = useApi(
-    () => (filiere
-      ? elearningService.getClassRankingByFiliere({ filiere, subject, class_obj: classObj })
-      : Promise.resolve({ filiere_name: null, classes: [] })),
+    () => elearningService.getClassRankingByFiliere({ filiere, subject, class_obj: classObj }),
     [filiere, subject, classObj], true
   );
-  const classes = data?.classes || [];
+  const filieres = data?.filieres || [];
+  const totalClasses = filieres.reduce((sum, f) => sum + f.classes.length, 0);
 
   // One row per étudiant (not per classe) — the per-subject notes vary in
   // number/name from one class to the next, so they're flattened into a
@@ -1947,8 +1952,8 @@ function ClassRankingByFiliere() {
   const formatNotes = (s) => Object.entries(s.notes).map(([subj, note]) => `${subj}: ${note}`).join(' ; ');
 
   const handleExportExcel = () => {
-    const rows = classes.flatMap(c => c.students.map(s => ({
-      'Filière': data?.filiere_name || '',
+    const rows = filieres.flatMap(f => f.classes.flatMap(c => c.students.map(s => ({
+      'Filière': f.filiere_name,
       'Rang classe': c.rank,
       'Classe': c.class_name,
       'Rang étudiant': s.rank,
@@ -1957,21 +1962,21 @@ function ClassRankingByFiliere() {
       'Matricule': s.matricule,
       'Notes': formatNotes(s),
       'Moyenne pondérée /20': s.weighted_average,
-    })));
+    }))));
     exportToExcel(rows,
       ['Filière', 'Rang classe', 'Classe', 'Rang étudiant', 'Nom', 'Prénoms', 'Matricule', 'Notes', 'Moyenne pondérée /20'],
       `classement-filiere-${new Date().toISOString().slice(0, 10)}`, 'Classement filière');
   };
 
   const handleExportPDF = () => {
-    const cols = ['Classe', 'Rang', 'Nom', 'Prénoms', 'Notes', 'Moyenne /20'];
-    const rows = classes.flatMap(c => c.students.map(s => [
-      c.class_name, String(s.rank), s.last_name, s.first_name, formatNotes(s), String(s.weighted_average),
-    ]));
-    exportToPDF(`Classement des classes — ${data?.filiere_name || ''}`, cols, rows,
+    const cols = ['Filière', 'Classe', 'Rang', 'Nom', 'Prénoms', 'Notes', 'Moyenne /20'];
+    const rows = filieres.flatMap(f => f.classes.flatMap(c => c.students.map(s => [
+      f.filiere_name, c.class_name, String(s.rank), s.last_name, s.first_name, formatNotes(s), String(s.weighted_average),
+    ])));
+    exportToPDF('Classement des classes par filière', cols, rows,
       `classement-filiere-${new Date().toISOString().slice(0, 10)}`, {
-        'Filière': data?.filiere_name || '-',
-        'Classes classées': classes.length,
+        'Filières': filieres.length,
+        'Classes classées': totalClasses,
         'Étudiants classés': rows.length,
         'Export du': new Date().toLocaleDateString('fr-FR'),
       });
@@ -1984,8 +1989,8 @@ function ClassRankingByFiliere() {
       <div className="flex flex-wrap items-center gap-2">
         <select value={filiere}
                 onChange={e => { setFiliere(e.target.value); setSubject(''); setClassObj(''); }}
-                className={selectStyle} style={{ borderColor: filiere ? '#e2e8f0' : F, background: '#f8fafc' }}>
-          <option value="">Sélectionner une filière…</option>
+                className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
+          <option value="">Toutes les filières</option>
           {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         <select value={classObj} onChange={e => setClassObj(e.target.value)}
@@ -2001,15 +2006,24 @@ function ClassRankingByFiliere() {
           {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         <div className="ml-auto">
-          <ExportMenu color={F} onExcel={handleExportExcel} onPDF={handleExportPDF} disabled={classes.length === 0} />
+          <ExportMenu color={F} onExcel={handleExportExcel} onPDF={handleExportPDF} disabled={totalClasses === 0} />
         </div>
       </div>
-      {!filiere
-        ? <Empty icon={Users} text="Choisissez une filière" sub="Sélectionnez une filière ci-dessus pour classer ses classes entre elles." color={F} />
-        : loading ? <Spinner />
-          : classes.length === 0
-            ? <Empty icon={Users} text="Aucune donnée" sub="Aucune copie corrigée pour les classes de cette filière avec ces filtres." color={F} />
-            : <div className="space-y-3">{classes.map(c => <ClassRankingCard key={c.class_id} classData={c} />)}</div>}
+      {loading ? <Spinner />
+        : filieres.length === 0
+          ? <Empty icon={Users} text="Aucune donnée" sub="Aucune copie corrigée ne correspond à ces filtres pour l'instant." color={F} />
+          : (
+            <div className="space-y-6">
+              {filieres.map(f => (
+                <div key={f.filiere_id}>
+                  <h3 className="text-sm font-black mb-2" style={{ color: F }}>{f.filiere_name}</h3>
+                  <div className="space-y-3">
+                    {f.classes.map(c => <ClassRankingCard key={c.class_id} classData={c} />)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
     </div>
   );
 }
