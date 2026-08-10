@@ -1839,39 +1839,32 @@ function ExamAbsencesOverview() {
   );
 }
 
-// ─── Classement par filière (classes) ──────────────────────────────────────────
-// Une filière regroupe plusieurs classes ; comparer les classes de deux
-// filières différentes n'aurait pas plus de sens que de comparer deux
-// matières entre elles (même principe que Classement, qui ne mélange jamais
-// deux examens) — mais la filière n'est qu'un filtre OPTIONNEL : à
-// l'ouverture de l'onglet, toutes les filières ayant des données s'affichent
-// d'emblée, chacune classée indépendamment ; le sélecteur ne sert qu'à
-// réduire ensuite l'affichage à une filière précise. Le score de chaque
-// classe est la moyenne de toutes les notes individuelles de ses étudiants
-// (voir class-ranking côté backend), affichée sur 20 pour rester lisible
-// d'un coup d'œil. Chaque carte de classe se déplie pour révéler, par
-// étudiant, sa note dans chaque matière programmée, sa moyenne pondérée par
-// le coefficient de chaque
-// examen, et son rang au sein de sa classe.
+// ─── Classement par filière (cohortes de jury) ─────────────────────────────────
+// L'école jurie certaines filières ensemble (même programme d'évaluation
+// partagé sur la semaine) et d'autres seules, même au même niveau — voir
+// _ranking_cohort côté backend. Un tableau peut donc mélanger plusieurs
+// filières (avec Filière/Classe en colonnes pour distinguer les étudiants)
+// ou n'en couvrir qu'une seule, jamais un mélange arbitraire. La filière
+// n'est qu'un filtre OPTIONNEL : à l'ouverture de l'onglet, toutes les
+// cohortes ayant des données s'affichent d'emblée, chacune classée
+// indépendamment ; le sélecteur ne sert qu'à réduire ensuite l'affichage.
+// Le score de chaque étudiant est sa moyenne pondérée par le coefficient de
+// chaque examen (voir class-ranking côté backend), affichée sur 20.
 const F = '#0d9488';
 
-function ClassRankingCard({ classData }) {
+function CohortRankingCard({ cohort }) {
   const [open, setOpen] = useState(true);
   return (
     <div className="rounded-2xl border overflow-hidden" style={{ borderColor: '#99f6e4' }}>
       <button onClick={() => setOpen(o => !o)}
               className="w-full flex items-center justify-between gap-3 p-4 text-left"
               style={{ background: '#f0fdfa' }}>
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="text-lg font-black flex-shrink-0" style={{ color: F }}>#{classData.rank}</span>
-          <div className="min-w-0">
-            <p className="text-sm font-black truncate" style={{ color: '#134e4a' }}>{classData.class_name}</p>
-            <p className="text-xs mt-0.5" style={{ color: '#0f766e' }}>
-              Moyenne {classData.average_score} / 20 ({classData.average_percent}%)
-              {' · '}{classData.graded_count} copie{classData.graded_count > 1 ? 's' : ''} corrigée{classData.graded_count > 1 ? 's' : ''}
-              {' · '}{classData.students.length} étudiant{classData.students.length > 1 ? 's' : ''}
-            </p>
-          </div>
+        <div className="min-w-0">
+          <p className="text-sm font-black truncate" style={{ color: '#134e4a' }}>{cohort.cohort_name}</p>
+          <p className="text-xs mt-0.5" style={{ color: '#0f766e' }}>
+            Moyenne {cohort.average_score} / 20
+            {' · '}{cohort.student_count} étudiant{cohort.student_count > 1 ? 's' : ''}
+          </p>
         </div>
         {open ? <ChevronUp className="h-4 w-4 flex-shrink-0" style={{ color: '#0f766e' }} />
               : <ChevronDown className="h-4 w-4 flex-shrink-0" style={{ color: '#0f766e' }} />}
@@ -1884,17 +1877,21 @@ function ClassRankingCard({ classData }) {
                 <th className="pb-2 pr-3">Rang</th>
                 <th className="pb-2 pr-3">Nom</th>
                 <th className="pb-2 pr-3">Prénoms</th>
-                {classData.subjects.map(subj => <th key={subj} className="pb-2 pr-3">{subj}</th>)}
+                <th className="pb-2 pr-3">Filière</th>
+                <th className="pb-2 pr-3">Classe</th>
+                {cohort.subjects.map(subj => <th key={subj} className="pb-2 pr-3">{subj}</th>)}
                 <th className="pb-2">Moyenne pondérée</th>
               </tr>
             </thead>
             <tbody>
-              {classData.students.map(s => (
+              {cohort.students.map(s => (
                 <tr key={s.matricule} style={{ borderTop: '1px solid #f1f5f9' }}>
                   <td className="py-2 pr-3 font-black" style={{ color: F }}>{s.rank}</td>
                   <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b' }}>{s.last_name}</td>
                   <td className="py-2 pr-3" style={{ color: '#374151' }}>{s.first_name}</td>
-                  {classData.subjects.map(subj => (
+                  <td className="py-2 pr-3" style={{ color: '#64748b' }}>{s.filiere_code || '—'}</td>
+                  <td className="py-2 pr-3" style={{ color: '#64748b' }}>{s.class_name}</td>
+                  {cohort.subjects.map(subj => (
                     <td key={subj} className="py-2 pr-3" style={{ color: '#64748b' }}>
                       {s.notes[subj] ?? '—'}
                     </td>
@@ -1942,41 +1939,40 @@ function ClassRankingByFiliere() {
     () => elearningService.getClassRankingByFiliere({ filiere, subject, class_obj: classObj }),
     [filiere, subject, classObj], true
   );
-  const filieres = data?.filieres || [];
-  const totalClasses = filieres.reduce((sum, f) => sum + f.classes.length, 0);
+  const cohorts = data?.cohorts || [];
+  const totalStudents = cohorts.reduce((sum, c) => sum + c.student_count, 0);
 
-  // One row per étudiant (not per classe) — the per-subject notes vary in
-  // number/name from one class to the next, so they're flattened into a
-  // single "Notes" cell ("Matière: note; ...") rather than dynamic columns
-  // the export helpers don't support.
+  // One row per étudiant — the per-subject notes vary in number/name from
+  // one cohorte to the next, so they're flattened into a single "Notes"
+  // cell ("Matière: note; ...") rather than dynamic columns the export
+  // helpers don't support.
   const formatNotes = (s) => Object.entries(s.notes).map(([subj, note]) => `${subj}: ${note}`).join(' ; ');
 
   const handleExportExcel = () => {
-    const rows = filieres.flatMap(f => f.classes.flatMap(c => c.students.map(s => ({
-      'Filière': f.filiere_name,
-      'Rang classe': c.rank,
-      'Classe': c.class_name,
-      'Rang étudiant': s.rank,
+    const rows = cohorts.flatMap(c => c.students.map(s => ({
+      'Cohorte': c.cohort_name,
+      'Filière': s.filiere_code,
+      'Classe': s.class_name,
+      'Rang': s.rank,
       'Nom': s.last_name,
       'Prénoms': s.first_name,
       'Matricule': s.matricule,
       'Notes': formatNotes(s),
       'Moyenne pondérée /20': s.weighted_average,
-    }))));
+    })));
     exportToExcel(rows,
-      ['Filière', 'Rang classe', 'Classe', 'Rang étudiant', 'Nom', 'Prénoms', 'Matricule', 'Notes', 'Moyenne pondérée /20'],
+      ['Cohorte', 'Filière', 'Classe', 'Rang', 'Nom', 'Prénoms', 'Matricule', 'Notes', 'Moyenne pondérée /20'],
       `classement-filiere-${new Date().toISOString().slice(0, 10)}`, 'Classement filière');
   };
 
   const handleExportPDF = () => {
-    const cols = ['Filière', 'Classe', 'Rang', 'Nom', 'Prénoms', 'Notes', 'Moyenne /20'];
-    const rows = filieres.flatMap(f => f.classes.flatMap(c => c.students.map(s => [
-      f.filiere_name, c.class_name, String(s.rank), s.last_name, s.first_name, formatNotes(s), String(s.weighted_average),
-    ])));
+    const cols = ['Cohorte', 'Filière', 'Classe', 'Rang', 'Nom', 'Prénoms', 'Notes', 'Moyenne /20'];
+    const rows = cohorts.flatMap(c => c.students.map(s => [
+      c.cohort_name, s.filiere_code, s.class_name, String(s.rank), s.last_name, s.first_name, formatNotes(s), String(s.weighted_average),
+    ]));
     exportToPDF('Classement des classes par filière', cols, rows,
       `classement-filiere-${new Date().toISOString().slice(0, 10)}`, {
-        'Filières': filieres.length,
-        'Classes classées': totalClasses,
+        'Cohortes': cohorts.length,
         'Étudiants classés': rows.length,
         'Export du': new Date().toLocaleDateString('fr-FR'),
       });
@@ -2006,24 +2002,13 @@ function ClassRankingByFiliere() {
           {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         <div className="ml-auto">
-          <ExportMenu color={F} onExcel={handleExportExcel} onPDF={handleExportPDF} disabled={totalClasses === 0} />
+          <ExportMenu color={F} onExcel={handleExportExcel} onPDF={handleExportPDF} disabled={totalStudents === 0} />
         </div>
       </div>
       {loading ? <Spinner />
-        : filieres.length === 0
+        : cohorts.length === 0
           ? <Empty icon={Users} text="Aucune donnée" sub="Aucune copie corrigée ne correspond à ces filtres pour l'instant." color={F} />
-          : (
-            <div className="space-y-6">
-              {filieres.map(f => (
-                <div key={f.filiere_id}>
-                  <h3 className="text-sm font-black mb-2" style={{ color: F }}>{f.filiere_name}</h3>
-                  <div className="space-y-3">
-                    {f.classes.map(c => <ClassRankingCard key={c.class_id} classData={c} />)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          : <div className="space-y-3">{cohorts.map(c => <CohortRankingCard key={c.cohort_key} cohort={c} />)}</div>}
     </div>
   );
 }
