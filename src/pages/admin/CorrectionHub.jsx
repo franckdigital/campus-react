@@ -1446,6 +1446,14 @@ function ExamCard({ exam, notify }) {
   );
   const sessions = data?.results ?? (Array.isArray(data) ? data : []);
   const graded = sessions.filter(s => s.score != null).length;
+  // Once opened, live session data is the freshest source; while still
+  // collapsed, fall back to the counts the list endpoint already annotated
+  // (see SecureExamViewSet.get_queryset) so the badge is visible without
+  // having to open the card first — the same matière can have dozens of
+  // near-identical cards (one per classe x normale/rattrapage), and finding
+  // the few with something to correct meant opening every single one.
+  const totalCount = open ? sessions.length : (exam.sessions_count ?? 0);
+  const gradedCount = open ? graded : (exam.graded_sessions_count ?? 0);
 
   return (
     <div className="rounded-2xl overflow-hidden"
@@ -1478,10 +1486,10 @@ function ExamCard({ exam, notify }) {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {open && sessions.length > 0 && (
+          {totalCount > 0 && (
             <span className="text-xs px-2.5 py-1 rounded-full font-bold"
-                  style={{ background: graded === sessions.length ? '#d1fae5' : '#fff7ed', color: graded === sessions.length ? '#059669' : A }}>
-              {graded}/{sessions.length} corrigés
+                  style={{ background: gradedCount === totalCount ? '#d1fae5' : '#fff7ed', color: gradedCount === totalCount ? '#059669' : A }}>
+              {gradedCount}/{totalCount} corrigés
             </span>
           )}
           {open ? <ChevronUp className="h-4 w-4" style={{ color: '#94a3b8' }} />
@@ -1508,6 +1516,7 @@ function ExamCard({ exam, notify }) {
 
 function ExamCorrectionList({ notify }) {
   const [search, setSearch] = useState('');
+  const [onlyPending, setOnlyPending] = useState(false);
   // page_size: 1000 = the backend pagination cap (FlexiblePagination.max_page_size).
   // This used to be 200, which silently dropped any exam beyond the first
   // 200 (ordered by -start_date) — with many filières x classes x matières
@@ -1522,9 +1531,16 @@ function ExamCorrectionList({ notify }) {
   // is often a generic label ("Session normale", "Devoir surveillé") while
   // what the admin actually searches for is the matière name, which lives
   // in a separate field.
-  const filtered = search
+  const searched = search
     ? all.filter(e => [e.title, e.subject_name, e.class_name].some(v => (v || '').toLowerCase().includes(search.toLowerCase())))
     : all;
+  // With one exam card per (classe, matière, normale/rattrapage), the same
+  // matière can show up as dozens of near-identical cards — this narrows
+  // straight down to the ones that actually still have something to grade,
+  // instead of leaving the admin to open each card just to find out.
+  const filtered = onlyPending
+    ? searched.filter(e => (e.sessions_count ?? 0) - (e.graded_sessions_count ?? 0) > 0)
+    : searched;
 
   return (
     <div className="space-y-3">
@@ -1534,6 +1550,11 @@ function ExamCorrectionList({ notify }) {
                className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm border outline-none"
                style={{ borderColor: '#e2e8f0' }} placeholder="Rechercher un examen…" />
       </div>
+      <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer w-fit" style={{ color: '#475569' }}>
+        <input type="checkbox" checked={onlyPending} onChange={e => setOnlyPending(e.target.checked)}
+               className="h-4 w-4 rounded" style={{ accentColor: A }} />
+        Uniquement les examens avec des copies à corriger
+      </label>
       {loading ? <Spinner />
         : filtered.length === 0 ? <Empty icon={Shield} text="Aucun examen" color={A} />
         : filtered.map(e => <ExamCard key={e.id} exam={e} notify={notify} />)}
