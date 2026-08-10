@@ -1573,7 +1573,7 @@ function RankingGroupCard({ group }) {
                     <td className="py-2 pr-3" style={{ color: '#374151' }}>{r.first_name}</td>
                     <td className="py-2 pr-3" style={{ color: '#64748b' }}>{group.subject_name || '—'}</td>
                     <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b' }}>
-                      {absent ? '—' : `${r.score} / ${group.max_score}`}
+                      {r.score == null ? '—' : `${r.score} / ${group.max_score}`}
                     </td>
                     <td className="py-2 pr-3 font-semibold" style={{ color: '#374151' }}>{r.mention ?? '—'}</td>
                     <td className="py-2 font-semibold" style={{ color: absent ? '#dc2626' : '#059669' }}>
@@ -1621,7 +1621,7 @@ function ExamRankingOverview() {
       'Rang': r.rank ?? '—',
       'Nom': r.last_name,
       'Prénoms': r.first_name,
-      'Note': r.status === 'absent' ? '—' : `${r.score} / ${g.max_score}`,
+      'Note': r.score == null ? '—' : `${r.score} / ${g.max_score}`,
       'Mention': r.mention ?? '—',
       'Présence': r.status === 'absent' ? 'Absent' : 'Présent',
     })));
@@ -1635,7 +1635,7 @@ function ExamRankingOverview() {
     const rows = groups.flatMap(g => g.results.map(r => [
       g.exam_title, g.subject_name || '-', g.class_name || '-',
       r.rank != null ? String(r.rank) : '—', r.last_name, r.first_name,
-      r.status === 'absent' ? '—' : `${r.score} / ${g.max_score}`, r.mention ?? '—',
+      r.score == null ? '—' : `${r.score} / ${g.max_score}`, r.mention ?? '—',
       r.status === 'absent' ? 'Absent' : 'Présent',
     ]));
     exportToPDF('Classement des examens sécurisés', cols, rows,
