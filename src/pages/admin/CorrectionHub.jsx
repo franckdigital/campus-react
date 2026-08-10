@@ -1508,9 +1508,23 @@ function ExamCard({ exam, notify }) {
 
 function ExamCorrectionList({ notify }) {
   const [search, setSearch] = useState('');
-  const { data, loading } = useApi(() => elearningService.getSecureExams({ page_size: 200 }), [], true);
+  // page_size: 1000 = the backend pagination cap (FlexiblePagination.max_page_size).
+  // This used to be 200, which silently dropped any exam beyond the first
+  // 200 (ordered by -start_date) — with many filières x classes x matières
+  // x sessions normales/rattrapages, the school can easily have more than
+  // 200 SecureExam records, so a class's exam card could simply never
+  // render here at all, making its submitted-but-ungraded sessions
+  // impossible to find and correct even though they show up fine in the
+  // ranking (which queries independently, unpaginated).
+  const { data, loading } = useApi(() => elearningService.getSecureExams({ page_size: 1000 }), [], true);
   const all = data?.results ?? (Array.isArray(data) ? data : []);
-  const filtered = search ? all.filter(e => e.title.toLowerCase().includes(search.toLowerCase())) : all;
+  // Matches matière/classe too, not just the exam title — the exam title
+  // is often a generic label ("Session normale", "Devoir surveillé") while
+  // what the admin actually searches for is the matière name, which lives
+  // in a separate field.
+  const filtered = search
+    ? all.filter(e => [e.title, e.subject_name, e.class_name].some(v => (v || '').toLowerCase().includes(search.toLowerCase())))
+    : all;
 
   return (
     <div className="space-y-3">
