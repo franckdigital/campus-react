@@ -1944,7 +1944,11 @@ function ClassRankingByFiliere() {
   // of forcing the admin to guess which filiere has data before seeing
   // anything.
   const { data, loading } = useApi(
-    () => elearningService.getClassRankingByFiliere({ filiere, subject, class_obj: classObj }),
+    // subject_name (not subject) — class-ranking merges its table by
+    // matière NAME (the same matière can exist as several distinct Subject
+    // rows in base, one per filière), so filtering by a single Subject FK
+    // id could miss the rows tied to another Subject row sharing that name.
+    () => elearningService.getClassRankingByFiliere({ filiere, subject_name: subject, class_obj: classObj }),
     [filiere, subject, classObj], true
   );
   const cohorts = data?.cohorts || [];
