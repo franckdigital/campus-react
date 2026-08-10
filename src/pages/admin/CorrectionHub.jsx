@@ -1853,9 +1853,17 @@ function ClassRankingByFiliere() {
   const [filiere, setFiliere] = useState('');
   const [subject, setSubject] = useState('');
   const { data: programsData } = useApi(() => academicService.getPrograms({ page_size: 200, is_active: true }), [], true);
-  const { data: subjectsData } = useApi(() => academicService.getSubjects({ page_size: 200, is_active: true }), [], true);
   const programs = programsData?.results ?? (Array.isArray(programsData) ? programsData : []);
-  const subjects = subjectsData?.results ?? (Array.isArray(subjectsData) ? subjectsData : []);
+
+  // Scoped to subjects actually programmed (≥1 published exam) within the
+  // chosen filière — listing every subject in the school let the admin pick
+  // one never taught there, which always returned an empty ranking and read
+  // as "the filter is broken" rather than "nothing matches this combination".
+  const { data: subjectsData } = useApi(
+    () => (filiere ? elearningService.getSubjectsForFiliere({ filiere }) : Promise.resolve({ subjects: [] })),
+    [filiere], true
+  );
+  const subjects = subjectsData?.subjects || [];
 
   // No network call until a filière is actually chosen — the backend
   // requires it and would 400, and there's nothing meaningful to rank yet.
@@ -1899,14 +1907,16 @@ function ClassRankingByFiliere() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <select value={filiere} onChange={e => setFiliere(e.target.value)}
+        <select value={filiere}
+                onChange={e => { setFiliere(e.target.value); setSubject(''); }}
                 className={selectStyle} style={{ borderColor: filiere ? '#e2e8f0' : F, background: '#f8fafc' }}>
           <option value="">Sélectionner une filière…</option>
           {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         <select value={subject} onChange={e => setSubject(e.target.value)}
+                disabled={!filiere}
                 className={selectStyle} style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
-          <option value="">Toutes les matières</option>
+          <option value="">Toutes les matières programmées</option>
           {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         <div className="ml-auto">
