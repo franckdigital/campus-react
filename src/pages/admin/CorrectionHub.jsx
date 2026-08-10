@@ -1846,8 +1846,66 @@ function ExamAbsencesOverview() {
 // deux examens) — la filière est donc un choix obligatoire, sans valeur
 // "Toutes les filières" par défaut. Le score de chaque classe est la moyenne
 // de toutes les notes individuelles de ses étudiants (voir class-ranking
-// côté backend), affichée sur 20 pour rester lisible d'un coup d'œil.
+// côté backend), affichée sur 20 pour rester lisible d'un coup d'œil. Chaque
+// carte de classe se déplie pour révéler, par étudiant, sa note dans chaque
+// matière programmée, sa moyenne pondérée par le coefficient de chaque
+// examen, et son rang au sein de sa classe.
 const F = '#0d9488';
+
+function ClassRankingCard({ classData }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="rounded-2xl border overflow-hidden" style={{ borderColor: '#99f6e4' }}>
+      <button onClick={() => setOpen(o => !o)}
+              className="w-full flex items-center justify-between gap-3 p-4 text-left"
+              style={{ background: '#f0fdfa' }}>
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-lg font-black flex-shrink-0" style={{ color: F }}>#{classData.rank}</span>
+          <div className="min-w-0">
+            <p className="text-sm font-black truncate" style={{ color: '#134e4a' }}>{classData.class_name}</p>
+            <p className="text-xs mt-0.5" style={{ color: '#0f766e' }}>
+              Moyenne {classData.average_score} / 20 ({classData.average_percent}%)
+              {' · '}{classData.graded_count} copie{classData.graded_count > 1 ? 's' : ''} corrigée{classData.graded_count > 1 ? 's' : ''}
+              {' · '}{classData.students.length} étudiant{classData.students.length > 1 ? 's' : ''}
+            </p>
+          </div>
+        </div>
+        {open ? <ChevronUp className="h-4 w-4 flex-shrink-0" style={{ color: '#0f766e' }} />
+              : <ChevronDown className="h-4 w-4 flex-shrink-0" style={{ color: '#0f766e' }} />}
+      </button>
+      {open && (
+        <div className="p-4 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[10px] font-bold uppercase tracking-wide" style={{ color: '#94a3b8' }}>
+                <th className="pb-2 pr-3">Rang</th>
+                <th className="pb-2 pr-3">Nom</th>
+                <th className="pb-2 pr-3">Prénoms</th>
+                {classData.subjects.map(subj => <th key={subj} className="pb-2 pr-3">{subj}</th>)}
+                <th className="pb-2">Moyenne pondérée</th>
+              </tr>
+            </thead>
+            <tbody>
+              {classData.students.map(s => (
+                <tr key={s.matricule} style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <td className="py-2 pr-3 font-black" style={{ color: F }}>{s.rank}</td>
+                  <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b' }}>{s.last_name}</td>
+                  <td className="py-2 pr-3" style={{ color: '#374151' }}>{s.first_name}</td>
+                  {classData.subjects.map(subj => (
+                    <td key={subj} className="py-2 pr-3" style={{ color: '#64748b' }}>
+                      {s.notes[subj] ?? '—'}
+                    </td>
+                  ))}
+                  <td className="py-2 font-semibold" style={{ color: '#1e293b' }}>{s.weighted_average} / 20</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ClassRankingByFiliere() {
   const [filiere, setFiliere] = useState('');
@@ -1882,29 +1940,39 @@ function ClassRankingByFiliere() {
   );
   const classes = data?.classes || [];
 
+  // One row per étudiant (not per classe) — the per-subject notes vary in
+  // number/name from one class to the next, so they're flattened into a
+  // single "Notes" cell ("Matière: note; ...") rather than dynamic columns
+  // the export helpers don't support.
+  const formatNotes = (s) => Object.entries(s.notes).map(([subj, note]) => `${subj}: ${note}`).join(' ; ');
+
   const handleExportExcel = () => {
-    const rows = classes.map(c => ({
+    const rows = classes.flatMap(c => c.students.map(s => ({
       'Filière': data?.filiere_name || '',
-      'Rang': c.rank,
+      'Rang classe': c.rank,
       'Classe': c.class_name,
-      'Moyenne /20': c.average_score,
-      'Moyenne %': c.average_percent,
-      'Copies corrigées': c.graded_count,
-    }));
+      'Rang étudiant': s.rank,
+      'Nom': s.last_name,
+      'Prénoms': s.first_name,
+      'Matricule': s.matricule,
+      'Notes': formatNotes(s),
+      'Moyenne pondérée /20': s.weighted_average,
+    })));
     exportToExcel(rows,
-      ['Filière', 'Rang', 'Classe', 'Moyenne /20', 'Moyenne %', 'Copies corrigées'],
+      ['Filière', 'Rang classe', 'Classe', 'Rang étudiant', 'Nom', 'Prénoms', 'Matricule', 'Notes', 'Moyenne pondérée /20'],
       `classement-filiere-${new Date().toISOString().slice(0, 10)}`, 'Classement filière');
   };
 
   const handleExportPDF = () => {
-    const cols = ['Rang', 'Classe', 'Moyenne /20', 'Moyenne %', 'Copies corrigées'];
-    const rows = classes.map(c => [
-      String(c.rank), c.class_name, String(c.average_score), `${c.average_percent}%`, String(c.graded_count),
-    ]);
+    const cols = ['Classe', 'Rang', 'Nom', 'Prénoms', 'Notes', 'Moyenne /20'];
+    const rows = classes.flatMap(c => c.students.map(s => [
+      c.class_name, String(s.rank), s.last_name, s.first_name, formatNotes(s), String(s.weighted_average),
+    ]));
     exportToPDF(`Classement des classes — ${data?.filiere_name || ''}`, cols, rows,
       `classement-filiere-${new Date().toISOString().slice(0, 10)}`, {
         'Filière': data?.filiere_name || '-',
         'Classes classées': classes.length,
+        'Étudiants classés': rows.length,
         'Export du': new Date().toLocaleDateString('fr-FR'),
       });
   };
@@ -1941,33 +2009,7 @@ function ClassRankingByFiliere() {
         : loading ? <Spinner />
           : classes.length === 0
             ? <Empty icon={Users} text="Aucune donnée" sub="Aucune copie corrigée pour les classes de cette filière avec ces filtres." color={F} />
-            : (
-              <div className="rounded-2xl border overflow-hidden overflow-x-auto" style={{ borderColor: '#99f6e4' }}>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-[10px] font-bold uppercase tracking-wide" style={{ color: '#94a3b8', background: '#f0fdfa' }}>
-                      <th className="py-3 pl-4 pr-3">Rang</th>
-                      <th className="py-3 pr-3">Classe</th>
-                      <th className="py-3 pr-3">Moyenne</th>
-                      <th className="py-3">Copies corrigées</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {classes.map(c => (
-                      <tr key={c.class_id} style={{ borderTop: '1px solid #f1f5f9' }}>
-                        <td className="py-2 pl-4 pr-3 font-black" style={{ color: F }}>{c.rank}</td>
-                        <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b' }}>{c.class_name}</td>
-                        <td className="py-2 pr-3 font-semibold" style={{ color: '#1e293b' }}>
-                          {c.average_score} / 20{' '}
-                          <span style={{ color: '#94a3b8', fontWeight: 400 }}>({c.average_percent}%)</span>
-                        </td>
-                        <td className="py-2" style={{ color: '#64748b' }}>{c.graded_count}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            : <div className="space-y-3">{classes.map(c => <ClassRankingCard key={c.class_id} classData={c} />)}</div>}
     </div>
   );
 }
