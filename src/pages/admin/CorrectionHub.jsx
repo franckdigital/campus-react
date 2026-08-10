@@ -1891,11 +1891,19 @@ function CohortRankingCard({ cohort }) {
                   <td className="py-2 pr-3" style={{ color: '#374151' }}>{s.first_name}</td>
                   <td className="py-2 pr-3" style={{ color: '#64748b' }}>{s.filiere_code || '—'}</td>
                   <td className="py-2 pr-3" style={{ color: '#64748b' }}>{s.class_name}</td>
-                  {cohort.subjects.map(subj => (
-                    <td key={subj} className="py-2 pr-3" style={{ color: '#64748b' }}>
-                      {s.notes[subj] ?? '—'}
-                    </td>
-                  ))}
+                  {cohort.subjects.map(subj => {
+                    const cell = s.notes[subj];
+                    // Trois états : pas de case du tout = absent (l'étudiant
+                    // n'a même pas composé) ; case présente mais graded:false
+                    // = composé mais pas encore corrigé ; sinon la note.
+                    if (!cell) {
+                      return <td key={subj} className="py-2 pr-3 font-semibold" style={{ color: '#dc2626' }}>—</td>;
+                    }
+                    if (!cell.graded) {
+                      return <td key={subj} className="py-2 pr-3 italic" style={{ color: '#94a3b8' }}>En attente de correction</td>;
+                    }
+                    return <td key={subj} className="py-2 pr-3" style={{ color: '#64748b' }}>{cell.value}</td>;
+                  })}
                   <td className="py-2 font-semibold" style={{ color: '#1e293b' }}>{s.weighted_average} / 20</td>
                 </tr>
               ))}
@@ -1946,7 +1954,9 @@ function ClassRankingByFiliere() {
   // one cohorte to the next, so they're flattened into a single "Notes"
   // cell ("Matière: note; ...") rather than dynamic columns the export
   // helpers don't support.
-  const formatNotes = (s) => Object.entries(s.notes).map(([subj, note]) => `${subj}: ${note}`).join(' ; ');
+  const formatNotes = (s) => Object.entries(s.notes)
+    .map(([subj, note]) => `${subj}: ${note.graded ? note.value : 'en attente de correction'}`)
+    .join(' ; ');
 
   const handleExportExcel = () => {
     const rows = cohorts.flatMap(c => c.students.map(s => ({
