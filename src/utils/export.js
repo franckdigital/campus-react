@@ -48,6 +48,37 @@ export function exportToExcel(rows, headers, filename = 'export', sheetName = 'D
 }
 
 /**
+ * Export multiple sheets (each with its own columns) into a single .xlsx
+ * workbook — for data whose column set varies by group (e.g. one ranking
+ * cohort per sheet, each with its own subject columns), which the flat
+ * single-sheet exportToExcel above can't represent without flattening
+ * everything into one catch-all text cell.
+ * @param {{name: string, rows: Object[], headers: string[]}[]} sheets
+ * @param {string} filename - Filename without extension
+ */
+export function exportToExcelMultiSheet(sheets, filename = 'export') {
+  const wb = XLSX.utils.book_new();
+  const usedNames = new Set();
+  sheets.forEach(({ name, rows, headers }) => {
+    const ws = XLSX.utils.json_to_sheet(rows, { header: headers });
+    ws['!cols'] = headers.map(h => ({
+      wch: Math.max(h.length, ...rows.map(r => String(r[h] ?? '').length)) + 2,
+    }));
+    // Excel sheet names: max 31 chars, no : \ / ? * [ ], and unique per workbook.
+    let safeName = (name || 'Feuille').replace(/[:\\/?*[\]]/g, '').slice(0, 31) || 'Feuille';
+    let suffix = 2;
+    while (usedNames.has(safeName)) {
+      const base = safeName.slice(0, 28 - String(suffix).length);
+      safeName = `${base} (${suffix})`;
+      suffix += 1;
+    }
+    usedNames.add(safeName);
+    XLSX.utils.book_append_sheet(wb, ws, safeName);
+  });
+  XLSX.writeFile(wb, `${filename}.xlsx`);
+}
+
+/**
  * Export data to a PDF file with a styled table.
  * @param {string}     title    - Document title shown at top
  * @param {string[]}   columns  - Column header labels
